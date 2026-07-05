@@ -1,13 +1,29 @@
 import { google, type GoogleProviderMetadata } from "@ai-sdk/google";
-import { generateText } from "ai";
-import { buildSearchSystemPrompt } from "./guide";
+import { generateObject, generateText } from "ai";
+import { z } from "zod";
+import {
+  buildProblemAnalysisPrompt,
+  buildSearchPrompt,
+  buildSearchSystemPrompt,
+} from "./guide";
+import { fetchPageMeta } from "./page-meta";
 
 export type SearchResult = {
   id: string;
   title: string;
   url: string;
   description: string;
+  site: string;
 };
+
+const problemPlanSchema = z.object({
+  goal: z.string(),
+  blockers: z.array(z.string()),
+  technologies: z.array(z.string()),
+  searchQueries: z.array(z.string()).min(1).max(4),
+});
+
+type ProblemPlan = z.infer<typeof problemPlanSchema>;
 
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
@@ -25,6 +41,21 @@ function hostnameFromUrl(url: string): string {
   }
 }
 
+function titleFromPath(url: string): string {
+  try {
+    const parts = new URL(url).pathname.split("/").filter(Boolean);
+    const last = parts.at(-1);
+    if (!last) return hostnameFromUrl(url);
+
+    return decodeURIComponent(last)
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  } catch {
+    return hostnameFromUrl(url);
+  }
+}
+
 function isGroundingRedirect(url: string): boolean {
   try {
     return new URL(url).hostname === GROUNDING_REDIRECT_HOST;
@@ -35,6 +66,42 @@ function isGroundingRedirect(url: string): boolean {
 
 function isRedirectStatus(status: number): boolean {
   return status >= 300 && status < 400;
+}
+
+function isHostnameLikeTitle(title: string | undefined, url: string): boolean {
+  if (!title) return true;
+
+  const normalized = title.toLowerCase().replace(/^www\./, "");
+  const hostname = hostnameFromUrl(url).toLowerCase();
+
+  return (
+    normalized === hostname ||
+    normalized.endsWith(`.${hostname}`) ||
+    hostname.endsWith(normalized)
+  );
+}
+
+function snippetsForChunks(
+  metadata: GoogleProviderMetadata | undefined,
+): Map<number, string> {
+  const snippets = new Map<number, string>();
+  const supports = metadata?.groundingMetadata?.groundingSupports ?? [];
+
+  for (const support of supports) {
+    const text = support.segment?.text?.trim();
+    if (!text) continue;
+
+    const indices =
+      support.groundingChunkIndices ?? support.supportChunkIndices ?? [];
+
+    for (const index of indices) {
+      if (!snippets.has(index)) {
+        snippets.set(index, text);
+      }
+    }
+  }
+
+  return snippets;
 }
 
 async function resolveRedirectUrl(url: string, maxHops = 5): Promise<string> {
@@ -80,26 +147,30 @@ async function resolveRedirectUrl(url: string, maxHops = 5): Promise<string> {
   return current;
 }
 
-async function resolveResultUrls(results: SearchResult[]): Promise<SearchResult[]> {
-  return Promise.all(
-    results.map(async (result) => {
-      const url = await resolveRedirectUrl(result.url);
-      const hostname = hostnameFromUrl(url);
-      const title =
-        result.title &&
-        !result.title.includes("vertexaisearch.cloud.google.com") &&
-        result.title !== hostnameFromUrl(result.url)
-          ? result.title
-          : hostname;
+async function enrichResult(result: SearchResult): Promise<SearchResult> {
+  const url = await resolveRedirectUrl(result.url);
+  const site = hostnameFromUrl(url);
+  const meta = await fetchPageMeta(url);
 
-      return {
-        ...result,
-        url,
-        title,
-        description: hostname,
-      };
-    }),
-  );
+  const title =
+    meta.title ||
+    (!isHostnameLikeTitle(result.title, url) ? result.title : undefined) ||
+    titleFromPath(url);
+
+  const description =
+    meta.description ||
+    (result.description && result.description !== result.title
+      ? result.description
+      : undefined) ||
+    `Resource on ${site}`;
+
+  return {
+    ...result,
+    url,
+    site,
+    title,
+    description,
+  };
 }
 
 function dedupeResults(results: SearchResult[]): SearchResult[] {
@@ -120,38 +191,104 @@ function sourcesToResults(
     url?: string;
     title?: string;
   }>,
+  snippets: Map<number, string>,
+  offset = 0,
 ): SearchResult[] {
   return sources
     .filter(
       (source): source is { sourceType: "url"; id: string; url: string; title?: string } =>
         source.sourceType === "url" && typeof source.url === "string",
     )
-    .map((source, index) => ({
-      id: source.id || `source-${index}`,
-      title: source.title?.trim() || hostnameFromUrl(source.url),
-      url: source.url,
-      description: hostnameFromUrl(source.url),
-    }));
+    .map((source, index) => {
+      const snippet = snippets.get(offset + index);
+
+      return {
+        id: source.id || `source-${index}`,
+        title: source.title?.trim() || hostnameFromUrl(source.url),
+        url: source.url,
+        description: snippet || "",
+        site: hostnameFromUrl(source.url),
+      };
+    });
 }
 
 function groundingToResults(
   metadata: GoogleProviderMetadata | undefined,
 ): SearchResult[] {
   const chunks = metadata?.groundingMetadata?.groundingChunks ?? [];
+  const snippets = snippetsForChunks(metadata);
 
   return chunks
     .filter((chunk) => chunk.web?.uri)
     .map((chunk, index) => {
       const uri = chunk.web!.uri!;
-      const title = chunk.web?.title?.trim();
+      const groundingTitle = chunk.web?.title?.trim();
+      const snippet = snippets.get(index);
 
       return {
         id: `grounding-${index}`,
-        title: title || hostnameFromUrl(uri),
+        title: groundingTitle || hostnameFromUrl(uri),
         url: uri,
-        description: title || hostnameFromUrl(uri),
+        description: snippet || "",
+        site: hostnameFromUrl(uri),
       };
     });
+}
+
+async function analyzeProblem(
+  query: string,
+  modelId: (typeof GEMINI_MODELS)[number],
+): Promise<ProblemPlan | null> {
+  try {
+    const { object } = await generateObject({
+      model: google(modelId),
+      system: buildProblemAnalysisPrompt(),
+      prompt: query,
+      schema: problemPlanSchema,
+    });
+
+    return object;
+  } catch {
+    return null;
+  }
+}
+
+async function collectGroundedResults(
+  prompt: string,
+  modelId: (typeof GEMINI_MODELS)[number],
+  limit: number,
+): Promise<SearchResult[]> {
+  const result = await generateText({
+    model: google(modelId),
+    system: buildSearchSystemPrompt(),
+    prompt,
+    tools: {
+      google_search: google.tools.googleSearch({}),
+    },
+  });
+
+  const metadata = result.providerMetadata?.google as
+    | GoogleProviderMetadata
+    | undefined;
+
+  const groundingResults = groundingToResults(metadata);
+  const sourceResults = sourcesToResults(
+    result.sources,
+    snippetsForChunks(metadata),
+    groundingResults.length,
+  );
+
+  const combined = dedupeResults([...groundingResults, ...sourceResults]);
+
+  if (combined.length === 0) {
+    return [];
+  }
+
+  const enriched = await Promise.all(
+    combined.slice(0, limit).map((item) => enrichResult(item)),
+  );
+
+  return dedupeResults(enriched);
 }
 
 async function searchWithGemini(
@@ -160,27 +297,30 @@ async function searchWithGemini(
 ): Promise<SearchResult[]> {
   for (const modelId of GEMINI_MODELS) {
     try {
-      const result = await generateText({
-        model: google(modelId),
-        system: buildSearchSystemPrompt(),
-        prompt: query,
-        tools: {
-          google_search: google.tools.googleSearch({}),
-        },
-      });
+      const plan = await analyzeProblem(query, modelId);
+      const searchPrompt = plan
+        ? buildSearchPrompt(query, plan)
+        : query;
 
-      const metadata = result.providerMetadata?.google as
-        | GoogleProviderMetadata
-        | undefined;
+      const results = await collectGroundedResults(
+        searchPrompt,
+        modelId,
+        limit,
+      );
 
-      const combined = dedupeResults([
-        ...sourcesToResults(result.sources),
-        ...groundingToResults(metadata),
-      ]);
+      if (results.length > 0) {
+        return results;
+      }
 
-      if (combined.length > 0) {
-        const resolved = await resolveResultUrls(combined.slice(0, limit));
-        return dedupeResults(resolved);
+      if (plan && searchPrompt !== query) {
+        const fallbackResults = await collectGroundedResults(
+          query,
+          modelId,
+          limit,
+        );
+        if (fallbackResults.length > 0) {
+          return fallbackResults;
+        }
       }
     } catch {
       continue;
@@ -202,4 +342,20 @@ export async function searchWeb(
   }
 
   return searchWithGemini(trimmed, limit);
+}
+
+export function formatUrlBreadcrumb(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const parts = parsed.pathname.split("/").filter(Boolean).slice(0, 4);
+
+    if (parts.length === 0) {
+      return host;
+    }
+
+    return [host, ...parts].join(" › ");
+  } catch {
+    return url;
+  }
 }
