@@ -4,14 +4,6 @@ import { FormEvent, KeyboardEvent, useState } from "react";
 import type { SearchResult } from "@/lib/search";
 import { SearchResults } from "./SearchResults";
 
-const SUGGESTIONS = [
-  "more-than-human design",
-  "Nintendo DS graphics library",
-  "react hooks",
-  "ecosystem mapping",
-  "creative coding",
-];
-
 function summarizeQuery(text: string): string {
   const trimmed = text.trim();
   const firstLine = trimmed.split("\n").find((line) => line.trim()) ?? trimmed;
@@ -58,6 +50,9 @@ export function TrailSearch() {
       }
 
       setResults(data.results);
+      if (data.error) {
+        setError(data.error);
+      }
     } catch (searchError) {
       setError(
         searchError instanceof Error
@@ -114,21 +109,6 @@ export function TrailSearch() {
           </button>
         </div>
       </form>
-
-      {!hasSearched && (
-        <div className="flex flex-wrap gap-2">
-          {SUGGESTIONS.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => void runSearch(suggestion)}
-              className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/50"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      )}
 
       {hasSearched && (
         <section className="space-y-4">

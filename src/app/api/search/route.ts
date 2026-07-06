@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const results = await searchWeb(query ?? "");
+  const { results, error } = await searchWeb(query ?? "");
 
-  return Response.json({ results });
+  return Response.json({ results, error });
 }
