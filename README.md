@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## ⚠️ API Key ändern
+
+Search requires a Google Generative AI API key. Create or edit `.env.local` in the project root:
+
+```bash
+GOOGLE_GENERATIVE_AI_API_KEY=your-key-here
+```
+
+To change the key, update that value in `.env.local` and restart the dev server (`npm run dev`). Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
+
 ## Getting Started
 
 First, run the development server:
