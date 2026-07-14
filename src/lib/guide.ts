@@ -112,3 +112,73 @@ ${answer}
 
 Search for resources that match this clarified need. Prefer links different from or more specific than those already shown.`;
 }
+
+export function buildApproachValidationPrompt(
+  originalQuery: string,
+  userApproach: string,
+  previousResults: Array<{ label: string; site: string; url: string }>,
+): string {
+  const links =
+    previousResults.length > 0
+      ? previousResults
+          .map((result) => `- ${result.label} (${result.site})`)
+          .join("\n")
+      : "- (none)";
+
+  return `The user described a technical problem and has formed their own approach or answer. Evaluate whether they are on the right track.
+
+Original problem:
+${originalQuery}
+
+User's approach or answer:
+${userApproach}
+
+Links already shown:
+${links}
+
+Rules:
+- Do NOT reveal the correct answer or full solution.
+- Say whether their approach is correct, partly correct, or incorrect.
+- Explain why in plain language — focus on reasoning gaps or strengths, not the solution itself.
+- If partly correct or incorrect, give 1-3 short hints about aspects of the problem they may not have considered (e.g. edge cases, related concepts, prerequisites). Hints should nudge thinking, not spell out answers.
+- If correct, affirm what they got right and note any caveats worth keeping in mind. Leave hints empty.`;
+}
+
+export function buildApproachSearchPrompt(
+  originalQuery: string,
+  userApproach: string,
+  assessment: "correct" | "partly-correct" | "incorrect",
+  feedback: string,
+  hints: string[],
+  previousResults: Array<{ label: string; site: string; url: string }>,
+): string {
+  const links =
+    previousResults.length > 0
+      ? previousResults
+          .map((result) => `- ${result.label} (${result.site})`)
+          .join("\n")
+      : "- (none)";
+
+  const hintBlock =
+    hints.length > 0
+      ? hints.map((hint) => `- ${hint}`).join("\n")
+      : "- (none)";
+
+  return `Find web resources tailored to what this user should explore next.
+
+Original problem:
+${originalQuery}
+
+User's approach:
+${userApproach}
+
+Assessment: ${assessment}
+Feedback given to user: ${feedback}
+Aspects they may still need to explore:
+${hintBlock}
+
+Links already shown:
+${links}
+
+Search for resources that help the user verify, deepen, or correct their thinking — docs and references aligned with their approach and any gaps identified. Prefer more specific links than those already shown.`;
+}

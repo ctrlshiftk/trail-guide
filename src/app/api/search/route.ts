@@ -1,4 +1,8 @@
-import { askRefinementQuestion, refineSearch } from "@/lib/refine";
+import {
+  askRefinementQuestion,
+  refineSearch,
+  validateApproach,
+} from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
 import { searchWeb } from "@/lib/search";
 
@@ -14,6 +18,12 @@ type SearchRequest =
       query?: string;
       question?: string;
       answer?: string;
+      previousResults?: SearchResult[];
+    }
+  | {
+      action: "validate";
+      query?: string;
+      approach?: string;
       previousResults?: SearchResult[];
     };
 
@@ -71,6 +81,26 @@ export async function POST(req: Request) {
     );
 
     return Response.json({ results, error });
+  }
+
+  if (body.action === "validate") {
+    const query = body.query?.trim() ?? "";
+    const approach = body.approach?.trim() ?? "";
+
+    if (!query || !approach) {
+      return Response.json(
+        { error: "Problem and approach are both required." },
+        { status: 400 },
+      );
+    }
+
+    const { results, error, validation } = await validateApproach(
+      query,
+      approach,
+      body.previousResults ?? [],
+    );
+
+    return Response.json({ results, error, validation });
   }
 
   const { results, error } = await searchWeb(body.query ?? "");
