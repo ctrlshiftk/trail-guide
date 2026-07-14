@@ -2,8 +2,8 @@ import { TrailSearch } from "@/components/TrailSearch";
 
 export default function Home() {
   return (
-    <div className="min-h-full bg-gradient-to-b from-emerald-50/60 via-zinc-50 to-zinc-100 dark:from-zinc-950 dark:via-zinc-950 dark:to-black">
-      <main className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-10 px-4 py-16 sm:px-6">
+    <div className="flex min-h-dvh flex-1 flex-col justify-center bg-background">
+      <main className="mx-auto flex w-full max-w-3xl -translate-y-8 flex-col gap-10 px-4 py-8 sm:px-6">
         <header className="space-y-3 text-center">
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
             Trail Guide
