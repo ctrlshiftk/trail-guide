@@ -9,7 +9,7 @@ export default function Home() {
             Trail Guide
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-4xl">
-            Find links on the web
+            Build your own answers
           </h1>
           <p className="mx-auto max-w-xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
             Describe your problem in detail and get links to

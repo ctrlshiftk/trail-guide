@@ -330,7 +330,7 @@ async function searchWithGemini(
     return {
       results: [],
       error:
-        "Google AI quota exceeded. Each search uses API credits — try again later or check usage at aistudio.google.com.",
+        "Google AI quota exceeded. Try again later or check usage at aistudio.google.com.",
     };
   }
 
@@ -385,7 +385,7 @@ export async function searchWebWithPrompt(
     return {
       results: [],
       error:
-        "Google AI quota exceeded. Each search uses API credits — try again later or check usage at aistudio.google.com.",
+        "Google AI quota exceeded. Try again later or check usage at aistudio.google.com.",
     };
   }
 

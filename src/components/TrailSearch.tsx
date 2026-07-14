@@ -589,8 +589,7 @@ export function TrailSearch() {
                   Checking your approach…
                 </p>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  We&apos;ll tell you if you&apos;re on the right track — without
-                  giving away the solution.
+                  We&apos;ll tell you if you&apos;re on the right track.
                 </p>
               </div>
             ) : (
@@ -604,8 +603,7 @@ export function TrailSearch() {
                   </p>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
                     Describe what you think the answer is or how you&apos;d solve
-                    it. We&apos;ll tell you if you&apos;re on the right track —
-                    without giving away the solution.
+                    it. We&apos;ll tell you if you&apos;re on the right track.
                   </p>
                 </div>
                 <label htmlFor="approach-input" className="sr-only">

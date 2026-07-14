@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Trail Guide",
-  description: "Search the web for docs, articles, and references — links only.",
+  description: "Search the web for docs, articles, and references.",
 };
 
 export default function RootLayout({
