@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import type { ApproachValidation } from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
 import { SearchResults } from "./SearchResults";
@@ -298,6 +298,29 @@ export function TrailSearch() {
     results.length > 0 &&
     followUpPhase !== "loading-result";
 
+  const isValidateModalOpen =
+    followUpMode === "validate" &&
+    (followUpPhase === "answering" || followUpPhase === "loading-result");
+
+  useEffect(() => {
+    if (!isValidateModalOpen) return;
+
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && followUpPhase !== "loading-result") {
+        resetFollowUp();
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isValidateModalOpen, followUpPhase]);
+
   const resultsHeading = validation
     ? "Links to explore next"
     : isRefined
@@ -432,7 +455,7 @@ export function TrailSearch() {
             </p>
           )}
 
-          {followUpError && (
+          {followUpError && followUpMode !== "validate" && (
             <p className="text-sm text-red-600 dark:text-red-400">
               {followUpError}
             </p>
@@ -478,50 +501,89 @@ export function TrailSearch() {
             </form>
           )}
 
-          {followUpPhase === "answering" && followUpMode === "validate" && (
-            <form
-              onSubmit={submitApproachValidation}
-              className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800"
-            >
-              <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                Describe your approach or what you think the answer is
-              </p>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                We&apos;ll tell you if you&apos;re on the right track — without
-                giving away the solution.
-              </p>
-              <label htmlFor="approach-input" className="sr-only">
-                Your approach
-              </label>
-              <textarea
-                id="approach-input"
-                value={followUpAnswer}
-                onChange={(event) => setFollowUpAnswer(event.target.value)}
-                placeholder="I think the issue is… / My plan is to…"
-                disabled={isLoading}
-                rows={4}
-                className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
-              />
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="submit"
-                  disabled={isLoading || !followUpAnswer.trim()}
-                  className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                >
-                  Check my approach
-                </button>
-                <button
-                  type="button"
-                  onClick={resetFollowUp}
-                  disabled={isLoading}
-                  className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
         </section>
+      )}
+
+      {isValidateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close"
+            disabled={followUpPhase === "loading-result"}
+            onClick={resetFollowUp}
+            className="absolute inset-0 bg-zinc-900/50 backdrop-blur-[2px] transition disabled:cursor-not-allowed"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="validate-approach-title"
+            className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-zinc-950 sm:p-6"
+          >
+            {followUpPhase === "loading-result" ? (
+              <div className="space-y-3 py-6 text-center">
+                <p
+                  id="validate-approach-title"
+                  className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                >
+                  Checking your approach…
+                </p>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  We&apos;ll tell you if you&apos;re on the right track — without
+                  giving away the solution.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={submitApproachValidation} className="space-y-4">
+                <div className="space-y-1">
+                  <p
+                    id="validate-approach-title"
+                    className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                  >
+                    Check if your approach is right
+                  </p>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Describe what you think the answer is or how you&apos;d solve
+                    it. We&apos;ll tell you if you&apos;re on the right track —
+                    without giving away the solution.
+                  </p>
+                </div>
+                <label htmlFor="approach-input" className="sr-only">
+                  Your approach
+                </label>
+                <textarea
+                  id="approach-input"
+                  value={followUpAnswer}
+                  onChange={(event) => setFollowUpAnswer(event.target.value)}
+                  placeholder="I think the issue is… / My plan is to…"
+                  autoFocus
+                  rows={4}
+                  className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 dark:border-zinc-800 dark:bg-zinc-900"
+                />
+                {followUpError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    {followUpError}
+                  </p>
+                )}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={resetFollowUp}
+                    className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!followUpAnswer.trim()}
+                    className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                  >
+                    Check my approach
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
