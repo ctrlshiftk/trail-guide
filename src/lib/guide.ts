@@ -58,3 +58,57 @@ ${searches}
 Full problem description:
 ${originalQuery}`;
 }
+
+export function buildRefinementQuestionPrompt(
+  originalQuery: string,
+  previousResults: Array<{ label: string; site: string; url: string }>,
+): string {
+  const links =
+    previousResults.length > 0
+      ? previousResults
+          .map((result) => `- ${result.label} (${result.site})`)
+          .join("\n")
+      : "- (none)";
+
+  return `The user described a problem and received these links, but is still unsure which direction to take.
+
+Original problem:
+${originalQuery}
+
+Links already shown:
+${links}
+
+Ask exactly ONE short, directed question that helps narrow what they need next.
+The question should be answerable in a sentence or two.
+Do not suggest links. Do not answer the problem.`;
+}
+
+export function buildRefinedSearchPrompt(
+  originalQuery: string,
+  question: string,
+  answer: string,
+  previousResults: Array<{ label: string; site: string; url: string }>,
+): string {
+  const links =
+    previousResults.length > 0
+      ? previousResults
+          .map((result) => `- ${result.label} (${result.site})`)
+          .join("\n")
+      : "- (none)";
+
+  return `Find better, more specific web resources.
+
+Original problem:
+${originalQuery}
+
+Links already shown (user wants something more fitting):
+${links}
+
+Follow-up question:
+${question}
+
+User's answer:
+${answer}
+
+Search for resources that match this clarified need. Prefer links different from or more specific than those already shown.`;
+}

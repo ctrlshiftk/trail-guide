@@ -12,7 +12,7 @@ export default function Home() {
             Find links on the web
           </h1>
           <p className="mx-auto max-w-xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-            Describe your problem in detail — even with code — and get links to
+            Describe your problem in detail and get links to
             relevant docs and references. No answers, just pointers.
           </p>
         </header>

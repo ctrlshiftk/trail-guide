@@ -225,49 +225,8 @@ async function analyzeProblem(
       schema: problemPlanSchema,
     });
 
-    // #region agent log
-    fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0963ce",
-      },
-      body: JSON.stringify({
-        sessionId: "0963ce",
-        runId: "pre-fix",
-        hypothesisId: "B",
-        location: "search.ts:analyzeProblem-ok",
-        message: "problem analysis succeeded",
-        data: { model: modelId, searchQueryCount: object.searchQueries.length },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return object;
-  } catch (error) {
-    // #region agent log
-    fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0963ce",
-      },
-      body: JSON.stringify({
-        sessionId: "0963ce",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "search.ts:analyzeProblem-error",
-        message: "problem analysis failed",
-        data: {
-          model: modelId,
-          errorMessage:
-            error instanceof Error ? error.message.slice(0, 200) : String(error),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+  } catch {
     return null;
   }
 }
@@ -295,30 +254,6 @@ async function collectGroundedResults(
     const sourceResults = sourcesToResults(result.sources);
     const combined = dedupeResults([...groundingResults, ...sourceResults]);
 
-    // #region agent log
-    fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0963ce",
-      },
-      body: JSON.stringify({
-        sessionId: "0963ce",
-        runId: "pre-fix",
-        hypothesisId: "C",
-        location: "search.ts:collectGroundedResults",
-        message: "grounded search completed",
-        data: {
-          model: modelId,
-          groundingCount: groundingResults.length,
-          sourceCount: sourceResults.length,
-          combinedCount: combined.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     if (combined.length === 0) {
       return [];
     }
@@ -329,28 +264,6 @@ async function collectGroundedResults(
 
     return toSearchResults(dedupeResults(enriched));
   } catch (error) {
-    // #region agent log
-    fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0963ce",
-      },
-      body: JSON.stringify({
-        sessionId: "0963ce",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "search.ts:collectGroundedResults-error",
-        message: "grounded search failed",
-        data: {
-          model: modelId,
-          errorMessage:
-            error instanceof Error ? error.message.slice(0, 200) : String(error),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     throw error;
   }
 }
@@ -392,54 +305,11 @@ async function searchWithGemini(
       if (isQuotaError(error)) {
         sawQuotaError = true;
       }
-
-      // #region agent log
-      fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0963ce",
-        },
-        body: JSON.stringify({
-          sessionId: "0963ce",
-          runId: "post-fix",
-          hypothesisId: "A",
-          location: "search.ts:searchWithGemini-model-error",
-          message: "model attempt failed",
-          data: {
-            model: modelId,
-            isQuotaError: isQuotaError(error),
-            errorMessage:
-              error instanceof Error ? error.message.slice(0, 200) : String(error),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       continue;
     }
   }
 
   if (sawQuotaError) {
-    // #region agent log
-    fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0963ce",
-      },
-      body: JSON.stringify({
-        sessionId: "0963ce",
-        runId: "post-fix",
-        hypothesisId: "A",
-        location: "search.ts:searchWithGemini-quota",
-        message: "returning quota error to client",
-        data: { queryPreview: query.slice(0, 80) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return {
       results: [],
       error:
@@ -447,24 +317,46 @@ async function searchWithGemini(
     };
   }
 
-  // #region agent log
-  fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "0963ce",
-    },
-    body: JSON.stringify({
-      sessionId: "0963ce",
-      runId: "post-fix",
-      hypothesisId: "E",
-      location: "search.ts:searchWithGemini-empty",
-      message: "all models returned no results",
-      data: { queryPreview: query.slice(0, 80) },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+  return { results: [] };
+}
+
+export async function searchWebWithPrompt(
+  prompt: string,
+  limit = 5,
+): Promise<SearchWebResult> {
+  const trimmed = prompt.trim();
+  if (!trimmed) return { results: [] };
+
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return {
+      results: [],
+      error: "Search requires a Google AI API key in .env.local.",
+    };
+  }
+
+  let sawQuotaError = false;
+
+  for (const modelId of GEMINI_MODELS) {
+    try {
+      const results = await collectGroundedResults(trimmed, modelId, limit);
+      if (results.length > 0) {
+        return { results };
+      }
+    } catch (error) {
+      if (isQuotaError(error)) {
+        sawQuotaError = true;
+      }
+      continue;
+    }
+  }
+
+  if (sawQuotaError) {
+    return {
+      results: [],
+      error:
+        "Google AI quota exceeded. Each search uses API credits — try again later or check usage at aistudio.google.com.",
+    };
+  }
 
   return { results: [] };
 }
@@ -476,58 +368,12 @@ export async function searchWeb(
   const trimmed = query.trim();
   if (!trimmed) return { results: [] };
 
-  const hasApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
-
-  // #region agent log
-  fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "0963ce",
-    },
-    body: JSON.stringify({
-      sessionId: "0963ce",
-      runId: "post-fix",
-      hypothesisId: "E",
-      location: "search.ts:searchWeb-entry",
-      message: "search started",
-      data: {
-        hasApiKey,
-        queryLength: trimmed.length,
-        needsAnalysis: needsDetailedAnalysis(trimmed),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
-  if (!hasApiKey) {
-    return { results: [], error: "Search requires a Google AI API key in .env.local." };
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return {
+      results: [],
+      error: "Search requires a Google AI API key in .env.local.",
+    };
   }
 
-  const outcome = await searchWithGemini(trimmed, limit);
-
-  // #region agent log
-  fetch("http://127.0.0.1:7890/ingest/3025649c-e972-49ee-a0d0-7bc16abdb313", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "0963ce",
-    },
-    body: JSON.stringify({
-      sessionId: "0963ce",
-      runId: "post-fix",
-      hypothesisId: "E",
-      location: "search.ts:searchWeb-exit",
-      message: "search finished",
-      data: {
-        resultCount: outcome.results.length,
-        hasError: Boolean(outcome.error),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
-  return outcome;
+  return searchWithGemini(trimmed, limit);
 }
