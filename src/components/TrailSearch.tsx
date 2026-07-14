@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
+import { ARCHIVES, formatArchiveLabels } from "@/lib/archives";
 import type { ApproachValidation } from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
 import { SearchResults } from "./SearchResults";
@@ -62,6 +63,23 @@ export function TrailSearch() {
   const [followUpError, setFollowUpError] = useState<string | null>(null);
   const [isRefined, setIsRefined] = useState(false);
   const [validation, setValidation] = useState<ApproachValidation | null>(null);
+  const [selectedArchiveIds, setSelectedArchiveIds] = useState<string[]>([]);
+  const [submittedArchiveIds, setSubmittedArchiveIds] = useState<string[]>([]);
+
+  function toggleArchive(archiveId: string) {
+    setSelectedArchiveIds((current) =>
+      current.includes(archiveId)
+        ? current.filter((id) => id !== archiveId)
+        : [...current, archiveId],
+    );
+  }
+
+  function withArchives<T extends Record<string, unknown>>(
+    payload: T,
+    archiveIds = submittedArchiveIds,
+  ) {
+    return archiveIds.length > 0 ? { ...payload, archives: archiveIds } : payload;
+  }
 
   function resetFollowUp() {
     setFollowUpMode(null);
@@ -79,6 +97,7 @@ export function TrailSearch() {
 
     setSubmittedQuery(trimmed);
     setQuery(trimmed);
+    setSubmittedArchiveIds([...selectedArchiveIds]);
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
@@ -89,7 +108,7 @@ export function TrailSearch() {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: trimmed }),
+        body: JSON.stringify(withArchives({ query: trimmed }, selectedArchiveIds)),
       });
 
       const data: { results: SearchResult[]; error?: string } =
@@ -127,11 +146,13 @@ export function TrailSearch() {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "question",
-          query: submittedQuery,
-          previousResults: results,
-        }),
+        body: JSON.stringify(
+          withArchives({
+            action: "question",
+            query: submittedQuery,
+            previousResults: results,
+          }),
+        ),
       });
 
       const data: { question?: string; error?: string } = await response.json();
@@ -180,13 +201,15 @@ export function TrailSearch() {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "refine",
-          query: submittedQuery,
-          question: followUpQuestion,
-          answer,
-          previousResults: results,
-        }),
+        body: JSON.stringify(
+          withArchives({
+            action: "refine",
+            query: submittedQuery,
+            question: followUpQuestion,
+            answer,
+            previousResults: results,
+          }),
+        ),
       });
 
       const data: { results: SearchResult[]; error?: string } =
@@ -239,12 +262,14 @@ export function TrailSearch() {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "validate",
-          query: submittedQuery,
-          approach,
-          previousResults: results,
-        }),
+        body: JSON.stringify(
+          withArchives({
+            action: "validate",
+            query: submittedQuery,
+            approach,
+            previousResults: results,
+          }),
+        ),
       });
 
       const data: {
@@ -321,6 +346,11 @@ export function TrailSearch() {
     };
   }, [isValidateModalOpen, followUpPhase]);
 
+  const archiveFilterLabel =
+    submittedArchiveIds.length > 0
+      ? formatArchiveLabels(submittedArchiveIds)
+      : null;
+
   const resultsHeading = validation
     ? "Links to explore next"
     : isRefined
@@ -345,6 +375,28 @@ export function TrailSearch() {
             className="min-h-40 w-full resize-y rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-base leading-relaxed shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
           />
         </div>
+        <div className="flex flex-wrap gap-2">
+          {ARCHIVES.map((archive) => {
+            const isSelected = selectedArchiveIds.includes(archive.id);
+
+            return (
+              <button
+                key={archive.id}
+                type="button"
+                aria-pressed={isSelected}
+                disabled={isLoading}
+                onClick={() => toggleArchive(archive.id)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
+                  isSelected
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-300"
+                    : "border-zinc-200 bg-white text-zinc-600 hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
+                }`}
+              >
+                {archive.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Enter for a new line.{" "}
@@ -368,6 +420,15 @@ export function TrailSearch() {
               {!validation && (
                 <>
                   &ldquo;{summarizeQuery(submittedQuery)}&rdquo;
+                  {archiveFilterLabel && (
+                    <>
+                      {" "}
+                      in{" "}
+                      <span className="text-zinc-600 dark:text-zinc-300">
+                        {archiveFilterLabel}
+                      </span>
+                    </>
+                  )}
                 </>
               )}
             </p>

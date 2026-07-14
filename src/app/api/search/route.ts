@@ -3,32 +3,38 @@ import {
   refineSearch,
   validateApproach,
 } from "@/lib/refine";
+import { normalizeArchiveIds } from "@/lib/archives";
 import type { SearchResult } from "@/lib/search";
 import { searchWeb } from "@/lib/search";
 
+type SearchRequestBase = {
+  archives?: string[];
+};
+
 type SearchRequest =
-  | { action?: "search"; query?: string }
-  | {
+  | (SearchRequestBase & { action?: "search"; query?: string })
+  | (SearchRequestBase & {
       action: "question";
       query?: string;
       previousResults?: SearchResult[];
-    }
-  | {
+    })
+  | (SearchRequestBase & {
       action: "refine";
       query?: string;
       question?: string;
       answer?: string;
       previousResults?: SearchResult[];
-    }
-  | {
+    })
+  | (SearchRequestBase & {
       action: "validate";
       query?: string;
       approach?: string;
       previousResults?: SearchResult[];
-    };
+    });
 
 export async function POST(req: Request) {
   const body: SearchRequest = await req.json();
+  const searchOptions = { archiveIds: normalizeArchiveIds(body.archives) };
 
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return Response.json(
@@ -78,6 +84,7 @@ export async function POST(req: Request) {
       question,
       answer,
       body.previousResults ?? [],
+      searchOptions,
     );
 
     return Response.json({ results, error });
@@ -98,12 +105,13 @@ export async function POST(req: Request) {
       query,
       approach,
       body.previousResults ?? [],
+      searchOptions,
     );
 
     return Response.json({ results, error, validation });
   }
 
-  const { results, error } = await searchWeb(body.query ?? "");
+  const { results, error } = await searchWeb(body.query ?? "", 5, searchOptions);
 
   return Response.json({ results, error });
 }

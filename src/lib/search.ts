@@ -2,10 +2,19 @@ import { google, type GoogleProviderMetadata } from "@ai-sdk/google";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import {
+  buildArchiveSearchConstraint,
+  normalizeArchiveIds,
+  urlMatchesArchives,
+} from "./archives";
+import {
   buildProblemAnalysisPrompt,
   buildSearchPrompt,
   buildSearchSystemPrompt,
 } from "./guide";
+
+export type SearchOptions = {
+  archiveIds?: string[];
+};
 
 export type SearchResult = {
   id: string;
@@ -235,12 +244,13 @@ async function collectGroundedResults(
   prompt: string,
   modelId: (typeof GEMINI_MODELS)[number],
   limit: number,
+  archiveIds: string[] = [],
 ): Promise<SearchResult[]> {
   try {
     const result = await generateText({
       model: google(modelId),
-      system: buildSearchSystemPrompt(),
-      prompt,
+      system: buildSearchSystemPrompt() + buildArchiveSearchConstraint(archiveIds),
+      prompt: prompt + buildArchiveSearchConstraint(archiveIds),
       tools: {
         google_search: google.tools.googleSearch({}),
       },
@@ -258,11 +268,15 @@ async function collectGroundedResults(
       return [];
     }
 
+    const fetchLimit = archiveIds.length > 0 ? limit * 4 : limit;
     const enriched = await Promise.all(
-      combined.slice(0, limit).map((item) => enrichResult(item)),
+      combined.slice(0, fetchLimit).map((item) => enrichResult(item)),
+    );
+    const filtered = dedupeResults(enriched).filter((item) =>
+      urlMatchesArchives(item.url, archiveIds),
     );
 
-    return toSearchResults(dedupeResults(enriched));
+    return toSearchResults(filtered.slice(0, limit));
   } catch (error) {
     throw error;
   }
@@ -271,6 +285,7 @@ async function collectGroundedResults(
 async function searchWithGemini(
   query: string,
   limit: number,
+  archiveIds: string[] = [],
 ): Promise<SearchWebResult> {
   let sawQuotaError = false;
 
@@ -285,6 +300,7 @@ async function searchWithGemini(
         searchPrompt,
         modelId,
         limit,
+        archiveIds,
       );
 
       if (results.length > 0) {
@@ -296,6 +312,7 @@ async function searchWithGemini(
           query,
           modelId,
           limit,
+          archiveIds,
         );
         if (fallbackResults.length > 0) {
           return { results: fallbackResults };
@@ -317,12 +334,20 @@ async function searchWithGemini(
     };
   }
 
+  if (archiveIds.length > 0) {
+    return {
+      results: [],
+      error: "No results found in the selected archives. Try another archive or search the full web.",
+    };
+  }
+
   return { results: [] };
 }
 
 export async function searchWebWithPrompt(
   prompt: string,
   limit = 5,
+  options?: SearchOptions,
 ): Promise<SearchWebResult> {
   const trimmed = prompt.trim();
   if (!trimmed) return { results: [] };
@@ -334,11 +359,17 @@ export async function searchWebWithPrompt(
     };
   }
 
+  const archiveIds = normalizeArchiveIds(options?.archiveIds);
   let sawQuotaError = false;
 
   for (const modelId of GEMINI_MODELS) {
     try {
-      const results = await collectGroundedResults(trimmed, modelId, limit);
+      const results = await collectGroundedResults(
+        trimmed,
+        modelId,
+        limit,
+        archiveIds,
+      );
       if (results.length > 0) {
         return { results };
       }
@@ -358,12 +389,20 @@ export async function searchWebWithPrompt(
     };
   }
 
+  if (archiveIds.length > 0) {
+    return {
+      results: [],
+      error: "No results found in the selected archives. Try another archive or search the full web.",
+    };
+  }
+
   return { results: [] };
 }
 
 export async function searchWeb(
   query: string,
   limit = 5,
+  options?: SearchOptions,
 ): Promise<SearchWebResult> {
   const trimmed = query.trim();
   if (!trimmed) return { results: [] };
@@ -375,5 +414,6 @@ export async function searchWeb(
     };
   }
 
-  return searchWithGemini(trimmed, limit);
+  const archiveIds = normalizeArchiveIds(options?.archiveIds);
+  return searchWithGemini(trimmed, limit, archiveIds);
 }

@@ -9,6 +9,7 @@ import {
 } from "./guide";
 import {
   type SearchResult,
+  type SearchOptions,
   type SearchWebResult,
   searchWebWithPrompt,
 } from "./search";
@@ -77,6 +78,7 @@ export async function refineSearch(
   question: string,
   answer: string,
   previousResults: SearchResult[],
+  options?: SearchOptions,
 ): Promise<SearchWebResult> {
   const prompt = buildRefinedSearchPrompt(
     originalQuery,
@@ -85,13 +87,14 @@ export async function refineSearch(
     previousResults,
   );
 
-  return searchWebWithPrompt(prompt);
+  return searchWebWithPrompt(prompt, 5, options);
 }
 
 export async function validateApproach(
   originalQuery: string,
   userApproach: string,
   previousResults: SearchResult[],
+  options?: SearchOptions,
 ): Promise<ValidateApproachResult> {
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return {
@@ -147,7 +150,7 @@ export async function validateApproach(
     previousResults,
   );
 
-  const { results, error } = await searchWebWithPrompt(searchPrompt);
+  const { results, error } = await searchWebWithPrompt(searchPrompt, 5, options);
 
   return { results, error, validation };
 }
