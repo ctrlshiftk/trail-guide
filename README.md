@@ -1,14 +1,35 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## ⚠️ API Key ändern
+## ⚠️ API Key / mock mode
 
-Search requires a Google Generative AI API key. Create or edit `.env.local` in the project root:
+Search uses Google Generative AI (Gemini). Create or edit `.env.local` in the project root.
+
+### UI work without using quota
+
+Set mock mode so `/api/search` returns fixtures and never calls Gemini:
+
+```bash
+AI_MOCK=1
+```
+
+Restart `npm run dev` after changing env. With mock mode on, no API key is required.
+
+Useful mock queries (type as the problem text):
+
+- `mock:empty` — no results
+- `mock:quota` — quota error UI
+- `mock:error` — generic search error
+
+In “check my approach”, include `correct` or `wrong` to switch the validation banner.
+
+### Real Gemini search
 
 ```bash
 GOOGLE_GENERATIVE_AI_API_KEY=your-key-here
+# leave AI_MOCK unset or set to 0
 ```
 
-To change the key, update that value in `.env.local` and restart the dev server (`npm run dev`). Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
+Get a key from [Google AI Studio](https://aistudio.google.com/apikey). Update `.env.local` and restart the dev server.
 
 ## Getting Started
 

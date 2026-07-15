@@ -1,3 +1,4 @@
+import { isAiMockEnabled, mockSearchResponse } from "@/lib/ai-mock";
 import {
   askRefinementQuestion,
   refineSearch,
@@ -34,7 +35,76 @@ type SearchRequest =
 
 export async function POST(req: Request) {
   const body: SearchRequest = await req.json();
-  const searchOptions = { archiveIds: normalizeArchiveIds(body.archives) };
+  const archiveIds = normalizeArchiveIds(body.archives);
+  const searchOptions = { archiveIds };
+
+  if (isAiMockEnabled()) {
+    if (body.action === "question") {
+      const query = body.query?.trim() ?? "";
+      if (!query) {
+        return Response.json(
+          { error: "A problem description is required." },
+          { status: 400 },
+        );
+      }
+
+      const mock = await mockSearchResponse({
+        action: "question",
+        query,
+        archiveIds,
+      });
+      return Response.json(mock.body, { status: mock.status ?? 200 });
+    }
+
+    if (body.action === "refine") {
+      const query = body.query?.trim() ?? "";
+      const question = body.question?.trim() ?? "";
+      const answer = body.answer?.trim() ?? "";
+
+      if (!query || !question || !answer) {
+        return Response.json(
+          { error: "Problem, question, and answer are all required." },
+          { status: 400 },
+        );
+      }
+
+      const mock = await mockSearchResponse({
+        action: "refine",
+        query,
+        question,
+        answer,
+        archiveIds,
+      });
+      return Response.json(mock.body, { status: mock.status ?? 200 });
+    }
+
+    if (body.action === "validate") {
+      const query = body.query?.trim() ?? "";
+      const approach = body.approach?.trim() ?? "";
+
+      if (!query || !approach) {
+        return Response.json(
+          { error: "Problem and approach are both required." },
+          { status: 400 },
+        );
+      }
+
+      const mock = await mockSearchResponse({
+        action: "validate",
+        query,
+        approach,
+        archiveIds,
+      });
+      return Response.json(mock.body, { status: mock.status ?? 200 });
+    }
+
+    const mock = await mockSearchResponse({
+      action: "search",
+      query: body.query ?? "",
+      archiveIds,
+    });
+    return Response.json(mock.body, { status: mock.status ?? 200 });
+  }
 
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return Response.json(
