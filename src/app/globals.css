@@ -24,3 +24,143 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes trail-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes trail-drawer-receive {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes trail-drawer-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Height crossfade via grid rows — smoother than max-height. */
+.trail-slot {
+  grid-template-rows: 0fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 720ms cubic-bezier(0.33, 0.1, 0.2, 1),
+    opacity 520ms cubic-bezier(0.33, 0.1, 0.2, 1);
+}
+
+.trail-slot-open {
+  grid-template-rows: 1fr;
+}
+
+.trail-slot-closed {
+  grid-template-rows: 0fr;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.trail-slot-inner {
+  transition:
+    transform 720ms cubic-bezier(0.33, 0.1, 0.2, 1),
+    opacity 560ms cubic-bezier(0.33, 0.1, 0.2, 1),
+    filter 560ms ease;
+  transform-origin: center top;
+}
+
+.trail-slot-enter.trail-slot-closed .trail-slot-inner {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.trail-slot-enter.trail-slot-open .trail-slot-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.trail-slot-pack.trail-slot-open .trail-slot-inner {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+
+.trail-slot-pack.trail-slot-closed .trail-slot-inner {
+  opacity: 0;
+  transform: translateY(18px) scale(0.96);
+  filter: blur(0.4px);
+}
+
+@keyframes trail-slot-appear {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.trail-slot-appear .trail-slot-inner {
+  animation: trail-slot-appear 560ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+}
+
+.trail-drawer-enter {
+  animation: trail-drawer-enter 560ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+}
+
+.trail-drawer-receive {
+  animation: trail-drawer-receive 720ms cubic-bezier(0.33, 0.1, 0.2, 1);
+}
+
+.trail-drawer-receive > button {
+  border-color: rgb(52 211 153 / 0.5);
+  background-color: rgb(236 253 245 / 0.65);
+}
+
+@media (prefers-color-scheme: dark) {
+  .trail-drawer-receive > button {
+    border-color: rgb(16 185 129 / 0.4);
+    background-color: rgb(2 44 34 / 0.4);
+  }
+}
+
+.trail-drawer-expand {
+  animation: trail-drawer-expand 380ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail-slot,
+  .trail-slot-inner {
+    transition: none;
+  }
+
+  .trail-drawer-enter,
+  .trail-drawer-receive,
+  .trail-drawer-expand {
+    animation: none;
+  }
+
+  .trail-drawer-receive > button {
+    border-color: inherit;
+    background-color: inherit;
+  }
+}

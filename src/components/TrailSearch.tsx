@@ -49,10 +49,26 @@ function assessmentStyles(
   }
 }
 
+/** Newest batch first; drop older entries that share a URL with the new batch. */
+function mergeIncomingResults(
+  existing: SearchResult[],
+  incoming: SearchResult[],
+): SearchResult[] {
+  const seen = new Set(incoming.map((result) => result.url));
+  const older = existing.filter((result) => !seen.has(result.url));
+  // Keep React keys unique if the API reuses ids across batches.
+  const stamped = incoming.map((result, index) => ({
+    ...result,
+    id: `${result.id}::${Date.now()}::${index}`,
+  }));
+  return [...stamped, ...older];
+}
+
 export function TrailSearch() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [latestCount, setLatestCount] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +107,18 @@ export function TrailSearch() {
     setValidation(null);
   }
 
+  function applyFreshResults(next: SearchResult[]) {
+    setResults(next);
+    setLatestCount(next.length);
+  }
+
+  function applyAccumulatedResults(incoming: SearchResult[]) {
+    if (incoming.length === 0) return;
+
+    setResults((current) => mergeIncomingResults(current, incoming));
+    setLatestCount(incoming.length);
+  }
+
   async function runSearch(searchQuery: string) {
     const trimmed = searchQuery.trim();
     if (!trimmed || isLoading) return;
@@ -101,7 +129,7 @@ export function TrailSearch() {
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
-    setResults([]);
+    applyFreshResults([]);
     resetFollowUp();
 
     try {
@@ -118,7 +146,7 @@ export function TrailSearch() {
         throw new Error(data.error ?? "Search failed");
       }
 
-      setResults(data.results);
+      applyFreshResults(data.results);
       if (data.error) {
         setError(data.error);
       }
@@ -128,7 +156,7 @@ export function TrailSearch() {
           ? searchError.message
           : "Search failed. Try again.",
       );
-      setResults([]);
+      applyFreshResults([]);
     } finally {
       setIsLoading(false);
     }
@@ -219,7 +247,7 @@ export function TrailSearch() {
         throw new Error(data.error ?? "Refined search failed");
       }
 
-      setResults(data.results);
+      applyAccumulatedResults(data.results);
       setIsRefined(true);
       setFollowUpMode(null);
       setFollowUpPhase("idle");
@@ -282,7 +310,7 @@ export function TrailSearch() {
         throw new Error(data.error ?? "Could not evaluate your approach.");
       }
 
-      setResults(data.results);
+      applyAccumulatedResults(data.results);
       setValidation(data.validation ?? null);
       setIsRefined(true);
       setFollowUpMode(null);
@@ -470,6 +498,7 @@ export function TrailSearch() {
             (!isLoading || followUpPhase === "loading-result") && (
               <SearchResults
                 results={results}
+                latestCount={latestCount}
                 query={summarizeQuery(submittedQuery)}
               />
             )
