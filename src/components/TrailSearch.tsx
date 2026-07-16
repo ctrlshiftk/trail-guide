@@ -1,10 +1,15 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ARCHIVES, formatArchiveLabels } from "@/lib/archives";
 import type { ApproachValidation } from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
 import { SearchResults } from "./SearchResults";
+import { SmoothHeight } from "./SmoothHeight";
+
+const OVERLAY_EXIT_MS = 380;
+const APPROACH_MOTION_MS = 420;
 
 function summarizeQuery(text: string): string {
   const trimmed = text.trim();
@@ -69,6 +74,9 @@ export function TrailSearch() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [latestCount, setLatestCount] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
+  const [overlayPhase, setOverlayPhase] = useState<
+    "closed" | "opening" | "open" | "closing"
+  >("closed");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [followUpMode, setFollowUpMode] = useState<FollowUpMode>(null);
@@ -82,6 +90,13 @@ export function TrailSearch() {
   const [validation, setValidation] = useState<ApproachValidation | null>(null);
   const [selectedArchiveIds, setSelectedArchiveIds] = useState<string[]>([]);
   const [submittedArchiveIds, setSubmittedArchiveIds] = useState<string[]>([]);
+  const [portalReady, setPortalReady] = useState(false);
+  const [approachMounted, setApproachMounted] = useState(false);
+  const [approachVisible, setApproachVisible] = useState(false);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   function toggleArchive(archiveId: string) {
     setSelectedArchiveIds((current) =>
@@ -140,10 +155,7 @@ export function TrailSearch() {
     setLatestCount(incoming.length);
   }
 
-  function closeResultsOverlay() {
-    if (followUpPhase === "loading-result" || isLoading) return;
-
-    setHasSearched(false);
+  function clearSession() {
     applyFreshResults([]);
     setError(null);
     setIsRefined(false);
@@ -151,6 +163,14 @@ export function TrailSearch() {
     resetUnsureFollowUp();
     setApproachText("");
     setApproachError(null);
+    setApproachMounted(false);
+    setApproachVisible(false);
+  }
+
+  function closeResultsOverlay() {
+    if (followUpPhase === "loading-result" || isLoading) return;
+    if (overlayPhase === "closing" || overlayPhase === "closed") return;
+    setOverlayPhase("closing");
   }
 
   async function runSearch(searchQuery: string) {
@@ -163,6 +183,7 @@ export function TrailSearch() {
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
+    setOverlayPhase((phase) => (phase === "closed" ? "opening" : "open"));
     applyFreshResults([]);
     setIsRefined(false);
     setValidation(null);
@@ -380,12 +401,67 @@ export function TrailSearch() {
   const isApproachChecking =
     followUpMode === "validate" && followUpPhase === "loading-result";
 
+  const overlayPresent = overlayPhase !== "closed";
+  const overlayOpen = overlayPhase === "open";
+
   useEffect(() => {
-    if (!hasSearched) return;
+    if (overlayPhase === "closed") {
+      setApproachMounted(false);
+      setApproachVisible(false);
+    }
+  }, [overlayPhase]);
+
+  useEffect(() => {
+    if (isApproachPanelOpen) {
+      setApproachMounted(true);
+      let frame2 = 0;
+      const frame1 = requestAnimationFrame(() => {
+        frame2 = requestAnimationFrame(() => setApproachVisible(true));
+      });
+      return () => {
+        cancelAnimationFrame(frame1);
+        cancelAnimationFrame(frame2);
+      };
+    }
+
+    setApproachVisible(false);
+    const timer = setTimeout(() => setApproachMounted(false), APPROACH_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [isApproachPanelOpen]);
+
+  useEffect(() => {
+    if (overlayPhase !== "opening") return;
+
+    let frame2 = 0;
+    const frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => setOverlayPhase("open"));
+    });
+
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
+  }, [overlayPhase]);
+
+  useEffect(() => {
+    if (overlayPhase !== "closing") return;
+
+    const timer = setTimeout(() => {
+      setOverlayPhase("closed");
+      setHasSearched(false);
+      clearSession();
+    }, OVERLAY_EXIT_MS);
+
+    return () => clearTimeout(timer);
+  }, [overlayPhase]);
+
+  useEffect(() => {
+    if (!overlayPresent) return;
 
     function handleEscape(event: globalThis.KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (followUpPhase === "loading-result" || isLoading) return;
+      if (overlayPhase === "closing") return;
 
       if (followUpMode === "unsure" && followUpPhase === "answering") {
         resetUnsureFollowUp();
@@ -408,7 +484,7 @@ export function TrailSearch() {
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = previousOverflow;
     };
-  }, [hasSearched, followUpPhase, followUpMode, isLoading]);
+  }, [overlayPresent, overlayPhase, followUpPhase, followUpMode, isLoading]);
 
   const archiveFilterLabel =
     submittedArchiveIds.length > 0
@@ -489,30 +565,39 @@ export function TrailSearch() {
         </div>
       </form>
 
-      {hasSearched && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          <button
-            type="button"
-            aria-label="Close results"
-            disabled={isLoading || followUpPhase === "loading-result"}
-            onClick={closeResultsOverlay}
-            className="absolute inset-0 bg-zinc-900/45 backdrop-blur-[3px] transition disabled:cursor-not-allowed"
-          />
+      {overlayPresent &&
+        portalReady &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <button
+              type="button"
+              aria-label="Close results"
+              disabled={
+                isLoading ||
+                followUpPhase === "loading-result" ||
+                overlayPhase === "closing"
+              }
+              onClick={closeResultsOverlay}
+              className={`trail-overlay-backdrop fixed inset-0 bg-zinc-900/45 backdrop-blur-[3px] disabled:cursor-not-allowed${
+                overlayOpen ? " is-open" : ""
+              }`}
+            />
 
-          <div
-            className={`relative flex w-full flex-col items-stretch gap-4 lg:flex-row lg:items-start ${
-              isApproachPanelOpen
-                ? "max-w-[calc(48rem+22rem+1rem)]"
-                : "max-w-3xl"
-            }`}
-          >
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="results-title"
-              className="relative flex max-h-[min(85dvh,52rem)] w-full max-w-3xl shrink-0 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+            <div
+              className={`trail-overlay-pair relative z-10 items-center${
+                approachVisible && overlayOpen ? " has-approach" : ""
+              }`}
+              style={{ alignItems: "center" }}
             >
-              <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-900">
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="results-title"
+                className={`trail-window trail-links-panel relative flex max-h-[min(85dvh,52rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950${
+                  overlayOpen ? " is-open" : ""
+                }`}
+              >
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-900">
                 <div className="min-w-0 space-y-1">
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
                     Trail Guide
@@ -538,232 +623,269 @@ export function TrailSearch() {
                     )}
                   </h2>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  disabled={isLoading || followUpPhase === "loading-result"}
-                  onClick={closeResultsOverlay}
-                  className="shrink-0 rounded-lg px-2 py-1 text-sm text-zinc-400 transition hover:bg-zinc-50 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
-                >
-                  Esc
-                </button>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    disabled={
+                      isLoading ||
+                      followUpPhase === "loading-result" ||
+                      overlayPhase === "closing"
+                    }
+                    onClick={closeResultsOverlay}
+                    className="shrink-0 rounded-lg px-2 py-1 text-sm text-zinc-400 transition hover:bg-zinc-50 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+                  >
+                    Esc
+                  </button>
               </div>
 
-              <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-                {isLoading && followUpPhase !== "loading-result" && (
-                  <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                    Understanding and searching…
-                  </p>
-                )}
-
-                {followUpPhase === "loading-result" &&
-                  followUpMode === "unsure" && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <SmoothHeight>
+                  <div className="space-y-5 px-5 py-5">
+                  {isLoading && followUpPhase !== "loading-result" && (
                     <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                      Finding better links…
+                      Understanding and searching…
                     </p>
                   )}
 
-                {validation && (
-                  <div
-                    className={`rounded-2xl border px-4 py-4 ${assessmentStyles(validation.assessment)}`}
-                  >
-                    <p className="text-sm font-medium">
-                      {assessmentLabel(validation.assessment)}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed">
-                      {validation.feedback}
-                    </p>
-                    {validation.hints.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-sm font-medium">Things to consider</p>
-                        <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm leading-relaxed">
-                          {validation.hints.map((hint) => (
-                            <li key={hint}>{hint}</li>
-                          ))}
-                        </ul>
-                      </div>
+                  {followUpPhase === "loading-result" &&
+                    followUpMode === "unsure" && (
+                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                        Finding better links…
+                      </p>
                     )}
-                  </div>
-                )}
 
-                {error ? (
-                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-                ) : (
-                  (!isLoading || followUpPhase === "loading-result") && (
-                    <SearchResults
-                      results={results}
-                      latestCount={latestCount}
-                      query={summarizeQuery(submittedQuery)}
-                    />
-                  )
-                )}
-
-                {showFollowUp && (
-                  <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-                    <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-0">
-                      <div
-                        aria-hidden
-                        className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-zinc-200 dark:bg-zinc-800 sm:block"
-                      />
-                      <div className="flex flex-col items-center gap-3 text-center">
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          None of these quite fit?
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void requestRefinementQuestion()}
-                          className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
-                        >
-                          I&apos;m still unsure
-                        </button>
-                      </div>
-                      <div className="flex flex-col items-center gap-3 border-t border-zinc-200 pt-8 text-center sm:border-t-0 sm:pt-0 dark:border-zinc-800">
-                        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                          Think you&apos;ve got it?
-                        </p>
-                        <button
-                          type="button"
-                          onClick={startValidateApproach}
-                          className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
-                        >
-                          Check if my approach is right
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {followUpPhase === "loading-question" && (
-                  <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                    Thinking of a question to narrow this down…
-                  </p>
-                )}
-
-                {followUpError && (
-                  <p className="text-sm text-red-600 dark:text-red-400">
-                    {followUpError}
-                  </p>
-                )}
-
-                {followUpPhase === "answering" && followUpMode === "unsure" && (
-                  <form
-                    onSubmit={submitUnsureRefinement}
-                    className="space-y-3 border-t border-zinc-100 pt-4 dark:border-zinc-900"
-                  >
-                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                      {followUpQuestion}
-                    </p>
-                    <label htmlFor="follow-up-answer" className="sr-only">
-                      Your answer
-                    </label>
-                    <input
-                      id="follow-up-answer"
-                      type="text"
-                      value={followUpAnswer}
-                      onChange={(event) => setFollowUpAnswer(event.target.value)}
-                      placeholder="Your answer…"
-                      disabled={isLoading}
-                      className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="submit"
-                        disabled={isLoading || !followUpAnswer.trim()}
-                        className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                      >
-                        Get refined links
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetUnsureFollowUp}
-                        disabled={isLoading}
-                        className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </section>
-
-            {isApproachPanelOpen && (
-              <aside
-                role="dialog"
-                aria-labelledby="approach-title"
-                className="relative w-full shrink-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950 lg:w-[22rem]"
-              >
-                {isApproachChecking ? (
-                  <div className="space-y-3 px-5 py-10 text-center">
-                    <p
-                      id="approach-title"
-                      className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                  {validation && (
+                    <div
+                      className={`rounded-2xl border px-4 py-4 ${assessmentStyles(validation.assessment)}`}
                     >
-                      Checking your approach…
-                    </p>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                      We&apos;ll tell you if you&apos;re on the right track.
-                    </p>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={submitApproachValidation}
-                    className="flex h-full flex-col gap-4 px-5 py-5"
-                  >
-                    <div className="space-y-1">
-                      <p
-                        id="approach-title"
-                        className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
-                      >
-                        Check if your approach is right
+                      <p className="text-sm font-medium">
+                        {assessmentLabel(validation.assessment)}
                       </p>
-                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                        Describe what you think the answer is or how you&apos;d
-                        solve it.
+                      <p className="mt-2 text-sm leading-relaxed">
+                        {validation.feedback}
                       </p>
+                      {validation.hints.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium">
+                            Things to consider
+                          </p>
+                          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm leading-relaxed">
+                            {validation.hints.map((hint) => (
+                              <li key={hint}>{hint}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
-                    <label htmlFor="approach-input" className="sr-only">
-                      Your approach
-                    </label>
-                    <textarea
-                      id="approach-input"
-                      value={approachText}
-                      onChange={(event) => setApproachText(event.target.value)}
-                      placeholder="I think the issue is… / My plan is to…"
-                      autoFocus
-                      disabled={isLoading}
-                      rows={6}
-                      className="w-full flex-1 resize-y rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900"
-                    />
-                    {approachError && (
-                      <p className="text-sm text-red-600 dark:text-red-400">
-                        {approachError}
-                      </p>
+                  )}
+
+                  {error ? (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {error}
+                    </p>
+                  ) : (
+                    (!isLoading || followUpPhase === "loading-result") && (
+                      <SearchResults
+                        results={results}
+                        latestCount={latestCount}
+                        query={summarizeQuery(submittedQuery)}
+                      />
+                    )
+                  )}
+
+                  {showFollowUp && (
+                    <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+                      <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-0">
+                        <div
+                          aria-hidden
+                          className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-zinc-200 dark:bg-zinc-800 sm:block"
+                        />
+                        <div className="flex flex-col items-center gap-3 text-center">
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            None of these quite fit?
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void requestRefinementQuestion()}
+                            className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
+                          >
+                            I&apos;m still unsure
+                          </button>
+                        </div>
+                        <div className="flex flex-col items-center gap-3 border-t border-zinc-200 pt-8 text-center sm:border-t-0 sm:pt-0 dark:border-zinc-800">
+                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                            Think you&apos;ve got it?
+                          </p>
+                          <button
+                            type="button"
+                            onClick={startValidateApproach}
+                            className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
+                          >
+                            Check if my approach is right
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {followUpPhase === "loading-question" && (
+                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                      Thinking of a question to narrow this down…
+                    </p>
+                  )}
+
+                  {followUpError && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {followUpError}
+                    </p>
+                  )}
+
+                  {followUpPhase === "answering" &&
+                    followUpMode === "unsure" && (
+                      <form
+                        onSubmit={submitUnsureRefinement}
+                        className="space-y-3 border-t border-zinc-100 pt-4 dark:border-zinc-900"
+                      >
+                        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                          {followUpQuestion}
+                        </p>
+                        <label htmlFor="follow-up-answer" className="sr-only">
+                          Your answer
+                        </label>
+                        <input
+                          id="follow-up-answer"
+                          type="text"
+                          value={followUpAnswer}
+                          onChange={(event) =>
+                            setFollowUpAnswer(event.target.value)
+                          }
+                          placeholder="Your answer…"
+                          disabled={isLoading}
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="submit"
+                            disabled={isLoading || !followUpAnswer.trim()}
+                            className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                          >
+                            Get refined links
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetUnsureFollowUp}
+                            disabled={isLoading}
+                            className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
                     )}
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={resetApproachPanel}
-                        disabled={isLoading}
-                        className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isLoading || !approachText.trim()}
-                        className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                      >
-                        Check my approach
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </aside>
-            )}
-          </div>
-        </div>
-      )}
+                  </div>
+                </SmoothHeight>
+              </div>
+              </section>
+
+              {approachMounted && (
+                <div
+                  className={`trail-approach-slot self-center${
+                    approachVisible && overlayOpen ? " is-open" : ""
+                  }`}
+                  style={{ alignSelf: "center" }}
+                >
+                  <div className="trail-approach-slot-clip">
+                    <aside
+                      role="dialog"
+                      aria-labelledby="approach-title"
+                      aria-hidden={!approachVisible}
+                      className={`trail-window trail-approach-panel relative flex max-h-[min(85dvh,52rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950${
+                        approachVisible && overlayOpen ? " is-open" : ""
+                      }`}
+                    >
+                      <SmoothHeight>
+                        {isApproachChecking ? (
+                          <div className="flex flex-col justify-center space-y-3 px-5 py-10 text-center">
+                            <p
+                              id="approach-title"
+                              className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                            >
+                              Checking your approach…
+                            </p>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                              We&apos;ll tell you if you&apos;re on the right
+                              track.
+                            </p>
+                          </div>
+                        ) : (
+                          <form
+                            onSubmit={submitApproachValidation}
+                            className="flex flex-col gap-4 px-5 py-5"
+                          >
+                            <div className="space-y-1">
+                              <p
+                                id="approach-title"
+                                className="text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                              >
+                                Check if your approach is right
+                              </p>
+                              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                Describe what you think the answer is or how
+                                you&apos;d solve it.
+                              </p>
+                            </div>
+                            <label htmlFor="approach-input" className="sr-only">
+                              Your approach
+                            </label>
+                            <textarea
+                              id="approach-input"
+                              value={approachText}
+                              onChange={(event) =>
+                                setApproachText(event.target.value)
+                              }
+                              placeholder="I think the issue is… / My plan is to…"
+                              autoFocus={approachVisible}
+                              disabled={isLoading || !isApproachPanelOpen}
+                              rows={6}
+                              className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900"
+                            />
+                            {approachError && (
+                              <p className="text-sm text-red-600 dark:text-red-400">
+                                {approachError}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={resetApproachPanel}
+                                disabled={isLoading || !isApproachPanelOpen}
+                                className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                disabled={
+                                  isLoading ||
+                                  !isApproachPanelOpen ||
+                                  !approachText.trim()
+                                }
+                                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                              >
+                                Check my approach
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </SmoothHeight>
+                    </aside>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

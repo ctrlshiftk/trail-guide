@@ -3,6 +3,9 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --trail-links-w: 48rem;
+  --trail-approach-w: 22rem;
+  --trail-ease: cubic-bezier(0.33, 0.1, 0.2, 1);
 }
 
 @theme inline {
@@ -25,47 +28,98 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-@keyframes trail-drawer-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* —— Overlay windows —— */
+.trail-overlay-backdrop {
+  opacity: 0;
+  transition: opacity 300ms var(--trail-ease);
 }
 
-@keyframes trail-drawer-receive {
-  0% {
-    transform: scale(1);
-  }
-  40% {
-    transform: scale(1.015);
-  }
-  100% {
-    transform: scale(1);
-  }
+.trail-overlay-backdrop.is-open {
+  opacity: 1;
 }
 
-@keyframes trail-drawer-expand {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.trail-overlay-pair {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center !important;
+  gap: 0;
+  flex-shrink: 0;
+  transition: gap 420ms var(--trail-ease);
 }
 
-/* Height crossfade via grid rows — smoother than max-height. */
+.trail-overlay-pair.has-approach {
+  gap: 1rem;
+}
+
+.trail-window {
+  opacity: 0;
+  transform: translateY(14px) scale(0.98);
+  transition:
+    opacity 320ms var(--trail-ease),
+    transform 380ms var(--trail-ease);
+}
+
+.trail-window.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.trail-links-panel {
+  width: min(calc(100vw - 2rem), var(--trail-links-w));
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+/* Grows width + height so links slide aside and the panel opens from center. */
+.trail-approach-slot {
+  width: 0;
+  flex-shrink: 0;
+  align-self: center !important;
+  margin-block: auto;
+  height: fit-content;
+  max-height: min(85dvh, 52rem);
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition:
+    width 420ms var(--trail-ease),
+    grid-template-rows 420ms var(--trail-ease);
+}
+
+.trail-approach-slot.is-open {
+  width: var(--trail-approach-w);
+  grid-template-rows: 1fr;
+}
+
+.trail-approach-slot-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.trail-approach-panel {
+  width: var(--trail-approach-w);
+  min-width: var(--trail-approach-w);
+}
+
+/* Approach pops in place (slot handles the vertical reveal). */
+.trail-approach-panel.trail-window {
+  transform: scale(0.98);
+  transform-origin: center center;
+}
+
+.trail-approach-panel.trail-window.is-open {
+  transform: scale(1);
+}
+
+/* —— Link list slot animations —— */
 .trail-slot {
+  display: grid;
   grid-template-rows: 0fr;
   opacity: 1;
   transition:
-    grid-template-rows 720ms cubic-bezier(0.33, 0.1, 0.2, 1),
-    opacity 520ms cubic-bezier(0.33, 0.1, 0.2, 1);
+    grid-template-rows 720ms var(--trail-ease),
+    opacity 520ms var(--trail-ease);
 }
 
 .trail-slot-open {
@@ -74,14 +128,14 @@ body {
 
 .trail-slot-closed {
   grid-template-rows: 0fr;
-  opacity: 0.35;
+  opacity: 0;
   pointer-events: none;
 }
 
 .trail-slot-inner {
   transition:
-    transform 720ms cubic-bezier(0.33, 0.1, 0.2, 1),
-    opacity 560ms cubic-bezier(0.33, 0.1, 0.2, 1),
+    transform 720ms var(--trail-ease),
+    opacity 560ms var(--trail-ease),
     filter 560ms ease;
   transform-origin: center top;
 }
@@ -120,15 +174,49 @@ body {
 }
 
 .trail-slot-appear .trail-slot-inner {
-  animation: trail-slot-appear 560ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+  animation: trail-slot-appear 560ms var(--trail-ease) both;
+}
+
+@keyframes trail-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes trail-drawer-receive {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes trail-drawer-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .trail-drawer-enter {
-  animation: trail-drawer-enter 560ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+  animation: trail-drawer-enter 560ms var(--trail-ease) both;
 }
 
 .trail-drawer-receive {
-  animation: trail-drawer-receive 720ms cubic-bezier(0.33, 0.1, 0.2, 1);
+  animation: trail-drawer-receive 720ms var(--trail-ease);
 }
 
 .trail-drawer-receive > button {
@@ -144,18 +232,27 @@ body {
 }
 
 .trail-drawer-expand {
-  animation: trail-drawer-expand 380ms cubic-bezier(0.33, 0.1, 0.2, 1) both;
+  animation: trail-drawer-expand 380ms var(--trail-ease) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .trail-overlay-backdrop,
+  .trail-overlay-pair,
+  .trail-approach-slot,
+  .trail-window,
   .trail-slot,
   .trail-slot-inner {
     transition: none;
   }
 
+  .trail-window {
+    transform: none;
+  }
+
   .trail-drawer-enter,
   .trail-drawer-receive,
-  .trail-drawer-expand {
+  .trail-drawer-expand,
+  .trail-slot-appear .trail-slot-inner {
     animation: none;
   }
 
