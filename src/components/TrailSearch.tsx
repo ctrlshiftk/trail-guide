@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useHelpfulLinks } from "@/hooks/useHelpfulLinks";
 import { ARCHIVES, formatArchiveLabels } from "@/lib/archives";
 import type { ApproachValidation } from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
@@ -93,10 +94,16 @@ export function TrailSearch() {
   const [portalReady, setPortalReady] = useState(false);
   const [approachMounted, setApproachMounted] = useState(false);
   const [approachVisible, setApproachVisible] = useState(false);
+  const [showHelpful, setShowHelpful] = useState(false);
+  const { links: helpfulLinks, remove: removeHelpfulLink } = useHelpfulLinks();
 
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (helpfulLinks.length === 0) setShowHelpful(false);
+  }, [helpfulLinks.length]);
 
   function toggleArchive(archiveId: string) {
     setSelectedArchiveIds((current) =>
@@ -564,6 +571,105 @@ export function TrailSearch() {
           </button>
         </div>
       </form>
+
+      {helpfulLinks.length > 0 && (
+        <section className="space-y-3" aria-labelledby="helpful-heading">
+          {!showHelpful ? (
+            <button
+              type="button"
+              id="helpful-heading"
+              aria-expanded={false}
+              onClick={() => setShowHelpful(true)}
+              className="group flex w-full items-start gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
+            >
+              <span
+                aria-hidden
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-zinc-400 transition group-hover:text-emerald-600 dark:text-zinc-500 dark:group-hover:text-emerald-400"
+              >
+                +
+              </span>
+              <span className="min-w-0">
+                <span className="block font-medium text-zinc-700 group-hover:text-emerald-800 dark:text-zinc-300 dark:group-hover:text-emerald-300">
+                  Show {helpfulLinks.length} saved{" "}
+                  {helpfulLinks.length === 1 ? "link" : "links"}
+                </span>
+                <span className="mt-0.5 block text-sm text-zinc-500 dark:text-zinc-400">
+                  Marked as helpful on this device
+                </span>
+              </span>
+            </button>
+          ) : (
+            <SmoothHeight>
+              <div className="space-y-3">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="space-y-1">
+                    <h2
+                      id="helpful-heading"
+                      className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
+                    >
+                      Saved for later
+                    </h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      Links you marked as helpful. They stay on this device.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-expanded={true}
+                    onClick={() => setShowHelpful(false)}
+                    className="shrink-0 rounded-xl px-3 py-1.5 text-sm text-zinc-500 transition hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    Hide
+                  </button>
+                </div>
+                <ul className="flex flex-col gap-3">
+                  {helpfulLinks.map((link, index) => (
+                    <li
+                      key={link.url}
+                      className="trail-drawer-expand relative"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                    >
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={link.url}
+                        className="group flex items-start gap-3 rounded-xl border border-zinc-200 bg-white py-3 pr-12 pl-4 no-underline transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
+                      >
+                        <span
+                          aria-hidden
+                          className="mt-0.5 text-lg leading-none text-emerald-600 dark:text-emerald-400"
+                        >
+                          ↗
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-medium text-zinc-900 group-hover:text-emerald-800 group-hover:underline dark:text-zinc-100 dark:group-hover:text-emerald-300">
+                            {link.label}
+                          </span>
+                          <span className="mt-0.5 block truncate text-sm text-zinc-500 dark:text-zinc-400">
+                            {link.site}
+                          </span>
+                        </span>
+                      </a>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${link.label} from saved`}
+                        title="Remove from saved"
+                        onClick={() => removeHelpfulLink(link.url)}
+                        className="absolute top-1/2 right-2.5 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+                      >
+                        <span aria-hidden className="text-xl leading-none">
+                          ×
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </SmoothHeight>
+          )}
+        </section>
+      )}
 
       {overlayPresent &&
         portalReady &&

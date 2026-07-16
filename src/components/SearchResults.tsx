@@ -1,36 +1,74 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useHelpfulLinks } from "@/hooks/useHelpfulLinks";
 import type { SearchResult } from "@/lib/search";
 
 const TRANSITION_MS = 720;
 const STAGGER_MS = 55;
 const EXPAND_STAGGER_MS = 50;
 
-function ResultLink({ result }: { result: SearchResult }) {
+function ResultLink({
+  result,
+  saved,
+  onToggle,
+}: {
+  result: SearchResult;
+  saved: boolean;
+  onToggle: (result: SearchResult) => void;
+}) {
   return (
-    <a
-      href={result.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={result.url}
-      className="group flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 no-underline transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
-    >
-      <span
-        aria-hidden
-        className="mt-0.5 text-lg leading-none text-emerald-600 dark:text-emerald-400"
+    <div className="relative">
+      <a
+        href={result.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={result.url}
+        className="group flex items-start gap-3 rounded-xl border border-zinc-200 bg-white py-3 pr-12 pl-4 no-underline transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
       >
-        ↗
-      </span>
-      <span className="min-w-0">
-        <span className="block font-medium text-zinc-900 group-hover:text-emerald-800 group-hover:underline dark:text-zinc-100 dark:group-hover:text-emerald-300">
-          {result.label}
+        <span
+          aria-hidden
+          className="mt-0.5 text-lg leading-none text-emerald-600 dark:text-emerald-400"
+        >
+          ↗
         </span>
-        <span className="mt-0.5 block truncate text-sm text-zinc-500 dark:text-zinc-400">
-          {result.site}
+        <span className="min-w-0">
+          <span className="block font-medium text-zinc-900 group-hover:text-emerald-800 group-hover:underline dark:text-zinc-100 dark:group-hover:text-emerald-300">
+            {result.label}
+          </span>
+          <span className="mt-0.5 block truncate text-sm text-zinc-500 dark:text-zinc-400">
+            {result.site}
+          </span>
         </span>
-      </span>
-    </a>
+      </a>
+      <button
+        type="button"
+        aria-pressed={saved}
+        aria-label={saved ? "Remove from helpful" : "Mark as helpful"}
+        title={saved ? "Remove from helpful" : "Mark as helpful"}
+        onClick={() => onToggle(result)}
+        className={`absolute top-1/2 right-2.5 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg transition ${
+          saved
+            ? "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/60"
+            : "text-zinc-300 opacity-70 hover:bg-zinc-100 hover:text-zinc-600 hover:opacity-100 dark:text-zinc-600 dark:hover:bg-zinc-900 dark:hover:text-zinc-300"
+        }`}
+      >
+        <svg
+          aria-hidden
+          viewBox="0 0 20 20"
+          className="h-5 w-5"
+          fill={saved ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.75"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M6 3.5h8a.5.5 0 0 1 .5.5v12.2l-4.25-2.55a.5.5 0 0 0-.5 0L5.5 16.2V4a.5.5 0 0 1 .5-.5Z"
+          />
+        </svg>
+      </button>
+    </div>
   );
 }
 
@@ -88,6 +126,7 @@ export function SearchResults({
   latestCount: number;
   query: string;
 }) {
+  const { has, toggle } = useHelpfulLinks();
   const [showOlder, setShowOlder] = useState(false);
   const [phase, setPhase] = useState<"idle" | "swap">("idle");
   const [swapReady, setSwapReady] = useState(false);
@@ -237,7 +276,11 @@ export function SearchResults({
                 : "idle"
           }
         >
-          <ResultLink result={result} />
+          <ResultLink
+            result={result}
+            saved={has(result.url)}
+            onToggle={toggle}
+          />
         </LinkSlot>
       ))}
 
@@ -248,7 +291,11 @@ export function SearchResults({
           staggerIndex={index}
           tone="pack"
         >
-          <ResultLink result={result} />
+          <ResultLink
+            result={result}
+            saved={has(result.url)}
+            onToggle={toggle}
+          />
         </LinkSlot>
       ))}
 
@@ -295,7 +342,11 @@ export function SearchResults({
               className="trail-drawer-expand pb-3"
               style={{ animationDelay: `${index * EXPAND_STAGGER_MS}ms` }}
             >
-              <ResultLink result={result} />
+              <ResultLink
+                result={result}
+                saved={has(result.url)}
+                onToggle={toggle}
+              />
             </li>
           ))}
           <li
