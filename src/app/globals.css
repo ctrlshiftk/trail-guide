@@ -162,6 +162,28 @@ body {
   filter: blur(0.4px);
 }
 
+/* Stack pack/enter in one cell so height is max(old, new), not the sum. */
+.trail-swap-crossfade {
+  display: grid;
+  grid-template-areas: "stack";
+}
+
+.trail-swap-layer {
+  grid-area: stack;
+  display: flex;
+  flex-direction: column;
+}
+
+.trail-swap-layer-enter {
+  position: relative;
+  z-index: 1;
+}
+
+.trail-swap-layer-pack {
+  z-index: 0;
+  pointer-events: none;
+}
+
 @keyframes trail-slot-appear {
   from {
     opacity: 0;
@@ -235,13 +257,49 @@ body {
   animation: trail-drawer-expand 380ms var(--trail-ease) both;
 }
 
+/* Collapse height + spacing so content below eases up with the card. */
+.trail-validation-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  padding-bottom: 1.25rem;
+  transition:
+    grid-template-rows 320ms var(--trail-ease),
+    padding-bottom 320ms var(--trail-ease);
+}
+
+.trail-validation-slot.is-exiting {
+  grid-template-rows: 0fr;
+  padding-bottom: 0;
+}
+
+.trail-validation-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes trail-validation-fade {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.trail-validation-fade {
+  animation: trail-validation-fade 320ms var(--trail-ease) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .trail-overlay-backdrop,
   .trail-overlay-pair,
   .trail-approach-slot,
   .trail-window,
   .trail-slot,
-  .trail-slot-inner {
+  .trail-slot-inner,
+  .trail-validation-slot {
     transition: none;
   }
 
@@ -252,6 +310,7 @@ body {
   .trail-drawer-enter,
   .trail-drawer-receive,
   .trail-drawer-expand,
+  .trail-validation-fade,
   .trail-slot-appear .trail-slot-inner {
     animation: none;
   }

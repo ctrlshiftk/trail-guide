@@ -3,10 +3,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useHelpfulLinks } from "@/hooks/useHelpfulLinks";
 import type { SearchResult } from "@/lib/search";
+import { useSmoothHeightLock } from "./SmoothHeight";
 
 const TRANSITION_MS = 720;
 const STAGGER_MS = 55;
 const EXPAND_STAGGER_MS = 50;
+/** How long packing runs before new links start opening. */
+const PACK_LEAD_MS = 160;
+/** Reveal the drawer once the first packing card has mostly collapsed. */
+const DRAWER_AFTER_PACK_MS = Math.round(TRANSITION_MS * 0.55);
 
 function ResultLink({
   result,
@@ -91,7 +96,8 @@ function LinkSlot({
   const delay = staggerIndex * STAGGER_MS;
 
   return (
-    <li
+    <div
+      role="listitem"
       className={[
         "trail-slot grid min-h-0",
         open ? "trail-slot-open" : "trail-slot-closed",
@@ -112,7 +118,7 @@ function LinkSlot({
           {children}
         </div>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -127,14 +133,21 @@ export function SearchResults({
   query: string;
 }) {
   const { has, toggle } = useHelpfulLinks();
+  const heightLock = useSmoothHeightLock();
+  const heightLockRef = useRef(heightLock);
+  heightLockRef.current = heightLock;
   const [showOlder, setShowOlder] = useState(false);
   const [phase, setPhase] = useState<"idle" | "swap">("idle");
-  const [swapReady, setSwapReady] = useState(false);
+  const [packReady, setPackReady] = useState(false);
+  const [enterReady, setEnterReady] = useState(false);
   const [packing, setPacking] = useState<SearchResult[]>([]);
   const [pendingLatest, setPendingLatest] = useState<SearchResult[]>([]);
   const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
   const [drawerReceiving, setDrawerReceiving] = useState(false);
   const [drawerEntering, setDrawerEntering] = useState(false);
+  /** Hide a brand-new drawer until a packing card has freed space for it. */
+  const [deferDrawer, setDeferDrawer] = useState(false);
+  const [drawerSlotOpen, setDrawerSlotOpen] = useState(true);
 
   const prevLatestRef = useRef<SearchResult[]>([]);
   const prevHasOlderRef = useRef(false);
@@ -180,35 +193,49 @@ export function SearchResults({
     setShowOlder(false);
 
     if (!isFirstCommit && packingItems.length > 0 && !reducedMotion) {
-      // Crossfade heights: collapse old cards while expanding new ones so the
-      // drawer doesn't snap upward when the previous batch disappears.
+      // Keep the panel from shrinking while links pack; drawer can still ride up.
+      heightLock?.lock();
       setPhase("swap");
-      setSwapReady(false);
+      setPackReady(false);
+      setEnterReady(false);
       setPacking(packingItems);
       setPendingLatest(nextLatest);
       setEnteringIds(new Set(nextLatest.map((result) => result.id)));
-      setDrawerReceiving(true);
-      setDrawerEntering(drawerIsNew);
+      setDrawerReceiving(!drawerIsNew);
+      setDrawerEntering(false);
+      // New drawer waits until a packing card collapses so it can grow into that space.
+      setDeferDrawer(drawerIsNew);
+      setDrawerSlotOpen(!drawerIsNew);
 
-      const duration =
-        TRANSITION_MS +
-        Math.max(packingItems.length, nextLatest.length) * STAGGER_MS;
+      const packDuration =
+        TRANSITION_MS + packingItems.length * STAGGER_MS;
+      const enterDuration =
+        TRANSITION_MS + nextLatest.length * STAGGER_MS;
 
       later(() => {
         setPhase("idle");
-        setSwapReady(false);
+        setPackReady(false);
+        setEnterReady(false);
         setPacking([]);
         setPendingLatest([]);
         setDrawerReceiving(false);
         setDrawerEntering(false);
+        setDeferDrawer(false);
+        setDrawerSlotOpen(true);
         setEnteringIds(new Set());
-      }, duration + 40);
+        // Release after new links are in so the window can ease to final height.
+        heightLock?.unlock();
+      }, Math.max(packDuration, PACK_LEAD_MS + enterDuration) + 40);
     } else {
+      heightLock?.unlock();
       setPhase("idle");
-      setSwapReady(false);
+      setPackReady(false);
+      setEnterReady(false);
       setPacking([]);
       setPendingLatest([]);
       setDrawerReceiving(false);
+      setDeferDrawer(false);
+      setDrawerSlotOpen(true);
       setDrawerEntering(drawerIsNew && !reducedMotion);
       setEnteringIds(
         reducedMotion || nextLatest.length === 0
@@ -231,22 +258,65 @@ export function SearchResults({
     prevHasOlderRef.current = nextOlder.length > 0;
   }, [latestBatchKey, latestCount, results]);
 
-  // Double rAF so the closed→open grid transition actually animates.
+  // Double rAF so the pack closed transition actually animates.
   useLayoutEffect(() => {
-    if (phase !== "swap" || swapReady) return;
+    if (phase !== "swap" || packReady) return;
 
     let frame2 = 0;
     const frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => setSwapReady(true));
+      frame2 = requestAnimationFrame(() => setPackReady(true));
     });
 
     return () => {
       cancelAnimationFrame(frame1);
       cancelAnimationFrame(frame2);
     };
-  }, [phase, swapReady]);
+  }, [phase, packReady]);
 
-  useEffect(() => clearTimers, []);
+  // Short beat after packing starts, then reveal the new batch.
+  useLayoutEffect(() => {
+    if (phase !== "swap" || !packReady || enterReady) return;
+    later(() => setEnterReady(true), PACK_LEAD_MS);
+  }, [phase, packReady, enterReady]);
+
+  // After the first packing card collapses, mount the drawer closed, then open it.
+  useLayoutEffect(() => {
+    if (phase !== "swap" || !packReady || !deferDrawer) return;
+
+    later(() => {
+      setDeferDrawer(false);
+      setDrawerSlotOpen(false);
+      setDrawerEntering(true);
+      setDrawerReceiving(true);
+    }, DRAWER_AFTER_PACK_MS);
+  }, [phase, packReady, deferDrawer]);
+
+  useLayoutEffect(() => {
+    if (deferDrawer || drawerSlotOpen || !hasOlder || showOlder) return;
+
+    let frame2 = 0;
+    const frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => setDrawerSlotOpen(true));
+    });
+
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
+  }, [deferDrawer, drawerSlotOpen, hasOlder, showOlder]);
+
+  useLayoutEffect(() => {
+    if (!drawerEntering) return;
+    later(() => setDrawerEntering(false), 560);
+  }, [drawerEntering]);
+
+  useEffect(
+    () => () => {
+      clearTimers();
+      heightLockRef.current?.unlock();
+    },
+    [],
+  );
 
   if (results.length === 0) {
     return (
@@ -257,88 +327,105 @@ export function SearchResults({
   }
 
   const shownLatest = phase === "swap" ? pendingLatest : latest;
-  const showDrawer = hasOlder && !showOlder;
-  const latestOpen = phase === "swap" ? swapReady : true;
-  const packingOpen = phase === "swap" ? !swapReady : false;
+  const showDrawer = hasOlder && !showOlder && !deferDrawer;
+  const latestOpen = phase === "swap" ? enterReady : true;
+  const packingOpen = phase === "swap" ? !packReady : false;
+
+  function renderLink(result: SearchResult, options: {
+    open: boolean;
+    staggerIndex: number;
+    tone: "idle" | "enter" | "pack" | "appear";
+    key?: string;
+  }) {
+    return (
+      <LinkSlot
+        key={options.key ?? result.id}
+        open={options.open}
+        staggerIndex={options.staggerIndex}
+        tone={options.tone}
+      >
+        <ResultLink
+          result={result}
+          saved={has(result.url)}
+          onToggle={toggle}
+        />
+      </LinkSlot>
+    );
+  }
 
   return (
-    <ul className="flex flex-col">
-      {shownLatest.map((result, index) => (
-        <LinkSlot
-          key={result.id}
-          open={latestOpen}
-          staggerIndex={index}
-          tone={
-            phase === "swap"
-              ? "enter"
-              : enteringIds.has(result.id)
-                ? "appear"
-                : "idle"
-          }
-        >
-          <ResultLink
-            result={result}
-            saved={has(result.url)}
-            onToggle={toggle}
-          />
-        </LinkSlot>
-      ))}
-
-      {packing.map((result, index) => (
-        <LinkSlot
-          key={`packing-${result.id}`}
-          open={packingOpen}
-          staggerIndex={index}
-          tone="pack"
-        >
-          <ResultLink
-            result={result}
-            saved={has(result.url)}
-            onToggle={toggle}
-          />
-        </LinkSlot>
-      ))}
+    <div role="list" className="flex flex-col">
+      {phase === "swap" ? (
+        <div className="trail-swap-crossfade">
+          <div className="trail-swap-layer trail-swap-layer-enter">
+            {shownLatest.map((result, index) =>
+              renderLink(result, {
+                open: latestOpen,
+                staggerIndex: index,
+                tone: "enter",
+              }),
+            )}
+          </div>
+          <div className="trail-swap-layer trail-swap-layer-pack" aria-hidden>
+            {packing.map((result, index) =>
+              renderLink(result, {
+                open: packingOpen,
+                staggerIndex: index,
+                tone: "pack",
+                key: `packing-${result.id}`,
+              }),
+            )}
+          </div>
+        </div>
+      ) : (
+        shownLatest.map((result, index) =>
+          renderLink(result, {
+            open: true,
+            staggerIndex: index,
+            tone: enteringIds.has(result.id) ? "appear" : "idle",
+          }),
+        )
+      )}
 
       {showDrawer && (
-        <li
-          className={[
-            "pb-3",
-            drawerEntering ? "trail-drawer-enter" : "",
-            drawerReceiving ? "trail-drawer-receive" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
+        <LinkSlot
+          open={drawerSlotOpen}
+          staggerIndex={0}
+          tone={drawerEntering ? "enter" : "idle"}
         >
-          <button
-            type="button"
-            onClick={() => setShowOlder(true)}
-            aria-expanded={false}
-            className="group flex w-full items-start gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left transition-[border-color,background-color,transform] duration-500 hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
-          >
-            <span
-              aria-hidden
-              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-zinc-400 transition group-hover:text-emerald-600 dark:text-zinc-500 dark:group-hover:text-emerald-400"
+          <div className={drawerReceiving ? "trail-drawer-receive" : ""}>
+            <button
+              type="button"
+              onClick={() => setShowOlder(true)}
+              aria-expanded={false}
+              className="group flex w-full items-start gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left transition-[border-color,background-color,transform] duration-500 hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
             >
-              +
-            </span>
-            <span className="min-w-0">
-              <span className="block font-medium text-zinc-700 group-hover:text-emerald-800 dark:text-zinc-300 dark:group-hover:text-emerald-300">
-                Show {older.length} earlier{" "}
-                {older.length === 1 ? "link" : "links"}
+              <span
+                aria-hidden
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-zinc-400 transition group-hover:text-emerald-600 dark:text-zinc-500 dark:group-hover:text-emerald-400"
+              >
+                +
               </span>
-              <span className="mt-0.5 block text-sm text-zinc-500 dark:text-zinc-400">
-                From previous searches in this trail
+              <span className="min-w-0">
+                <span className="block font-medium text-zinc-700 group-hover:text-emerald-800 dark:text-zinc-300 dark:group-hover:text-emerald-300">
+                  Show {older.length} earlier{" "}
+                  {older.length === 1 ? "link" : "links"}
+                </span>
+                <span className="mt-0.5 block text-sm text-zinc-500 dark:text-zinc-400">
+                  From previous searches in this trail
+                </span>
               </span>
-            </span>
-          </button>
-        </li>
+            </button>
+          </div>
+        </LinkSlot>
       )}
 
       {hasOlder && showOlder && (
         <>
           {older.map((result, index) => (
-            <li
+            <div
               key={result.id}
+              role="listitem"
               className="trail-drawer-expand pb-3"
               style={{ animationDelay: `${index * EXPAND_STAGGER_MS}ms` }}
             >
@@ -347,9 +434,10 @@ export function SearchResults({
                 saved={has(result.url)}
                 onToggle={toggle}
               />
-            </li>
+            </div>
           ))}
-          <li
+          <div
+            role="listitem"
             className="trail-drawer-expand pb-3"
             style={{
               animationDelay: `${older.length * EXPAND_STAGGER_MS}ms`,
@@ -363,9 +451,9 @@ export function SearchResults({
             >
               Show fewer
             </button>
-          </li>
+          </div>
         </>
       )}
-    </ul>
+    </div>
   );
 }

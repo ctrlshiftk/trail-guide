@@ -11,6 +11,12 @@ import { SmoothHeight } from "./SmoothHeight";
 
 const OVERLAY_EXIT_MS = 380;
 const APPROACH_MOTION_MS = 420;
+const VALIDATION_EXIT_MS = 320;
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function summarizeQuery(text: string): string {
   const trimmed = text.trim();
@@ -89,6 +95,7 @@ export function TrailSearch() {
   const [approachError, setApproachError] = useState<string | null>(null);
   const [isRefined, setIsRefined] = useState(false);
   const [validation, setValidation] = useState<ApproachValidation | null>(null);
+  const [validationExiting, setValidationExiting] = useState(false);
   const [selectedArchiveIds, setSelectedArchiveIds] = useState<string[]>([]);
   const [submittedArchiveIds, setSubmittedArchiveIds] = useState<string[]>([]);
   const [portalReady, setPortalReady] = useState(false);
@@ -148,6 +155,7 @@ export function TrailSearch() {
     setApproachText("");
     setApproachError(null);
     setValidation(null);
+    setValidationExiting(false);
   }
 
   function applyFreshResults(next: SearchResult[]) {
@@ -167,6 +175,7 @@ export function TrailSearch() {
     setError(null);
     setIsRefined(false);
     setValidation(null);
+    setValidationExiting(false);
     resetUnsureFollowUp();
     setApproachText("");
     setApproachError(null);
@@ -194,6 +203,7 @@ export function TrailSearch() {
     applyFreshResults([]);
     setIsRefined(false);
     setValidation(null);
+    setValidationExiting(false);
     resetUnsureFollowUp();
     setApproachText("");
     setApproachError(null);
@@ -231,10 +241,12 @@ export function TrailSearch() {
   async function requestRefinementQuestion() {
     if (followUpPhase !== "idle" || isLoading) return;
 
+    const hadValidation = validation !== null;
+
     setFollowUpMode("unsure");
     setFollowUpPhase("loading-question");
     setFollowUpError(null);
-    setValidation(null);
+    // Keep the approach response visible while the question loads.
 
     try {
       const response = await fetch("/api/search", {
@@ -255,9 +267,19 @@ export function TrailSearch() {
         throw new Error(data.error ?? "Could not get a follow-up question.");
       }
 
+      if (hadValidation && !prefersReducedMotion()) {
+        setValidationExiting(true);
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, VALIDATION_EXIT_MS);
+        });
+      }
+
+      setValidation(null);
+      setValidationExiting(false);
       setFollowUpQuestion(data.question);
       setFollowUpPhase("answering");
     } catch (questionError) {
+      setValidationExiting(false);
       setFollowUpError(
         questionError instanceof Error
           ? questionError.message
@@ -276,7 +298,6 @@ export function TrailSearch() {
       return;
     }
 
-    setFollowUpPhase("loading-result");
     setFollowUpError(null);
     setIsLoading(true);
     setError(null);
@@ -316,7 +337,6 @@ export function TrailSearch() {
           ? refineError.message
           : "Refined search failed. Try again.",
       );
-      setFollowUpPhase("answering");
     } finally {
       setIsLoading(false);
     }
@@ -362,6 +382,7 @@ export function TrailSearch() {
 
       applyAccumulatedResults(data.results);
       setValidation(data.validation ?? null);
+      setValidationExiting(false);
       setIsRefined(true);
       setFollowUpMode(null);
       setFollowUpPhase("idle");
@@ -746,148 +767,167 @@ export function TrailSearch() {
 
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <SmoothHeight>
-                  <div className="space-y-5 px-5 py-5">
-                  {isLoading && followUpPhase !== "loading-result" && (
-                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                      Understanding and searching…
-                    </p>
-                  )}
-
-                  {followUpPhase === "loading-result" &&
-                    followUpMode === "unsure" && (
-                      <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                        Finding better links…
-                      </p>
-                    )}
-
-                  {validation && (
-                    <div
-                      className={`rounded-2xl border px-4 py-4 ${assessmentStyles(validation.assessment)}`}
-                    >
-                      <p className="text-sm font-medium">
-                        {assessmentLabel(validation.assessment)}
-                      </p>
-                      <p className="mt-2 text-sm leading-relaxed">
-                        {validation.feedback}
-                      </p>
-                      {validation.hints.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-sm font-medium">
-                            Things to consider
+                  <div className="flex h-full flex-1 flex-col gap-5 px-5 py-5">
+                    <div className="flex flex-col">
+                      {isLoading &&
+                        followUpMode === null &&
+                        results.length === 0 && (
+                          <p className="mb-5 text-sm text-zinc-400 dark:text-zinc-500">
+                            Understanding and searching…
                           </p>
-                          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm leading-relaxed">
-                            {validation.hints.map((hint) => (
-                              <li key={hint}>{hint}</li>
-                            ))}
-                          </ul>
+                        )}
+
+                      {validation && (
+                        <div
+                          className={`trail-validation-slot${
+                            validationExiting ? " is-exiting" : ""
+                          }`}
+                        >
+                          <div className="trail-validation-clip">
+                            <div
+                              className={`rounded-2xl border px-4 py-4 ${assessmentStyles(validation.assessment)}${
+                                validationExiting
+                                  ? " trail-validation-fade"
+                                  : ""
+                              }`}
+                            >
+                              <p className="text-sm font-medium">
+                                {assessmentLabel(validation.assessment)}
+                              </p>
+                              <p className="mt-2 text-sm leading-relaxed">
+                                {validation.feedback}
+                              </p>
+                              {validation.hints.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-sm font-medium">
+                                    Things to consider
+                                  </p>
+                                  <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm leading-relaxed">
+                                    {validation.hints.map((hint) => (
+                                      <li key={hint}>{hint}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
-                    </div>
-                  )}
 
-                  {error ? (
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      {error}
-                    </p>
-                  ) : (
-                    (!isLoading || followUpPhase === "loading-result") && (
-                      <SearchResults
-                        results={results}
-                        latestCount={latestCount}
-                        query={summarizeQuery(submittedQuery)}
-                      />
-                    )
-                  )}
-
-                  {showFollowUp && (
-                    <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-                      <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-0">
-                        <div
-                          aria-hidden
-                          className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-zinc-200 dark:bg-zinc-800 sm:block"
-                        />
-                        <div className="flex flex-col items-center gap-3 text-center">
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                            None of these quite fit?
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => void requestRefinementQuestion()}
-                            className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
-                          >
-                            I&apos;m still unsure
-                          </button>
-                        </div>
-                        <div className="flex flex-col items-center gap-3 border-t border-zinc-200 pt-8 text-center sm:border-t-0 sm:pt-0 dark:border-zinc-800">
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                            Think you&apos;ve got it?
-                          </p>
-                          <button
-                            type="button"
-                            onClick={startValidateApproach}
-                            className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
-                          >
-                            Check if my approach is right
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {followUpPhase === "loading-question" && (
-                    <p className="text-sm text-zinc-400 dark:text-zinc-500">
-                      Thinking of a question to narrow this down…
-                    </p>
-                  )}
-
-                  {followUpError && (
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      {followUpError}
-                    </p>
-                  )}
-
-                  {followUpPhase === "answering" &&
-                    followUpMode === "unsure" && (
-                      <form
-                        onSubmit={submitUnsureRefinement}
-                        className="space-y-3 border-t border-zinc-100 pt-4 dark:border-zinc-900"
-                      >
-                        <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                          {followUpQuestion}
+                      {error ? (
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          {error}
                         </p>
-                        <label htmlFor="follow-up-answer" className="sr-only">
-                          Your answer
-                        </label>
-                        <input
-                          id="follow-up-answer"
-                          type="text"
-                          value={followUpAnswer}
-                          onChange={(event) =>
-                            setFollowUpAnswer(event.target.value)
-                          }
-                          placeholder="Your answer…"
-                          disabled={isLoading}
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="submit"
-                            disabled={isLoading || !followUpAnswer.trim()}
-                            className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                          >
-                            Get refined links
-                          </button>
-                          <button
-                            type="button"
-                            onClick={resetUnsureFollowUp}
-                            disabled={isLoading}
-                            className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
-                          >
-                            Cancel
-                          </button>
+                      ) : (
+                        (!isLoading || results.length > 0) && (
+                          <SearchResults
+                            results={results}
+                            latestCount={latestCount}
+                            query={summarizeQuery(submittedQuery)}
+                          />
+                        )
+                      )}
+                    </div>
+
+                    <div className="mt-auto space-y-5">
+                      {(showFollowUp ||
+                        followUpPhase === "loading-question") && (
+                        <div className="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+                          {showFollowUp ? (
+                            <div className="relative grid gap-8 sm:grid-cols-2 sm:gap-0">
+                              <div
+                                aria-hidden
+                                className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-zinc-200 dark:bg-zinc-800 sm:block"
+                              />
+                              <div className="flex flex-col items-center gap-3 text-center">
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                  None of these quite fit?
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => void requestRefinementQuestion()}
+                                  className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
+                                >
+                                  I&apos;m still unsure
+                                </button>
+                              </div>
+                              <div className="flex flex-col items-center gap-3 border-t border-zinc-200 pt-8 text-center sm:border-t-0 sm:pt-0 dark:border-zinc-800">
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                  Think you&apos;ve got it?
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={startValidateApproach}
+                                  className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
+                                >
+                                  Check if my approach is right
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex min-h-[5.5rem] flex-col items-center justify-center gap-2 text-center sm:min-h-[4.5rem]">
+                              <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                                Thinking of a question to narrow this down…
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      </form>
-                    )}
+                      )}
+
+                      {followUpError && (
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          {followUpError}
+                        </p>
+                      )}
+
+                      {followUpPhase === "answering" &&
+                        followUpMode === "unsure" && (
+                          <form
+                            onSubmit={submitUnsureRefinement}
+                            className="space-y-3 border-t border-zinc-100 pt-4 dark:border-zinc-900"
+                          >
+                            <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                              {followUpQuestion}
+                            </p>
+                            <label htmlFor="follow-up-answer" className="sr-only">
+                              Your answer
+                            </label>
+                            <input
+                              id="follow-up-answer"
+                              type="text"
+                              value={followUpAnswer}
+                              onChange={(event) =>
+                                setFollowUpAnswer(event.target.value)
+                              }
+                              placeholder="Your answer…"
+                              disabled={isLoading}
+                              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
+                            />
+                            {isLoading ? (
+                              <p className="text-sm text-zinc-400 dark:text-zinc-500">
+                                Finding better links…
+                              </p>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="submit"
+                                  disabled={!followUpAnswer.trim()}
+                                  className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                                >
+                                  Get refined links
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={resetUnsureFollowUp}
+                                  className="rounded-xl px-4 py-2 text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </form>
+                        )}
+                    </div>
                   </div>
                 </SmoothHeight>
               </div>
