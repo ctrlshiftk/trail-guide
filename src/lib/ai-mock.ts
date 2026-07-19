@@ -1,4 +1,4 @@
-import { urlMatchesArchives } from "./archives";
+import { urlMatchesResourceTypes } from "./resource-types";
 import type { ApproachValidation } from "./refine";
 import type { SearchResult } from "./search";
 
@@ -7,59 +7,77 @@ const MOCK_DELAY_MS = 700;
 const FIXTURE_RESULTS: SearchResult[] = [
   {
     id: "mock-1",
+    label: "Attention Is All You Need",
+    url: "https://arxiv.org/abs/1706.03762",
+    site: "arxiv.org",
+  },
+  {
+    id: "mock-2",
+    label: "Introduction to Psychology — OpenStax",
+    url: "https://openstax.org/details/books/psychology-2e",
+    site: "openstax.org",
+  },
+  {
+    id: "mock-3",
     label: "Using the Fetch API",
     url: "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch",
     site: "developer.mozilla.org",
   },
   {
-    id: "mock-2",
-    label: "How to handle async errors in JavaScript",
-    url: "https://stackoverflow.com/questions/28714298/how-to-catch-error-in-async-await",
-    site: "stackoverflow.com",
-  },
-  {
-    id: "mock-3",
-    label: "REST (representational state transfer)",
-    url: "https://en.wikipedia.org/wiki/REST",
-    site: "en.wikipedia.org",
-  },
-  {
     id: "mock-4",
-    label: "vercel/ai — Vercel AI SDK",
-    url: "https://github.com/vercel/ai",
-    site: "github.com",
+    label: "How to design a simple experiment",
+    url: "https://www.wikihow.com/Conduct-Scientific-Research",
+    site: "wikihow.com",
   },
   {
     id: "mock-5",
-    label: "JavaScript Promises in 100 Seconds",
-    url: "https://www.youtube.com/watch?v=RvYYCGs45L4",
-    site: "youtube.com",
+    label: "Our World in Data — Research and data",
+    url: "https://ourworldindata.org/",
+    site: "ourworldindata.org",
+  },
+  {
+    id: "mock-6",
+    label: "The danger of a single story — TED",
+    url: "https://www.ted.com/talks/chimamanda_ngozi_adichie_the_danger_of_a_single_story",
+    site: "ted.com",
   },
 ];
 
 const FIXTURE_REFINED_RESULTS: SearchResult[] = [
   {
     id: "mock-r1",
-    label: "Promise rejection events",
-    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises#promise_rejection_events",
-    site: "developer.mozilla.org",
+    label: "BERT: Pre-training of Deep Bidirectional Transformers",
+    url: "https://arxiv.org/abs/1810.04805",
+    site: "arxiv.org",
   },
   {
     id: "mock-r2",
-    label: "Try/catch with async functions",
-    url: "https://stackoverflow.com/questions/44607420/try-catch-with-async-await",
-    site: "stackoverflow.com",
+    label: "Biology 2e — OpenStax",
+    url: "https://openstax.org/details/books/biology-2e",
+    site: "openstax.org",
   },
   {
     id: "mock-r3",
-    label: "Error handling — Node.js docs",
-    url: "https://nodejs.org/en/learn/getting-started/error-handling",
-    site: "nodejs.org",
+    label: "HTTP response status codes — MDN",
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status",
+    site: "developer.mozilla.org",
+  },
+  {
+    id: "mock-r4",
+    label: "World Bank Open Data",
+    url: "https://data.worldbank.org/",
+    site: "worldbank.org",
+  },
+  {
+    id: "mock-r5",
+    label: "JavaScript Promises in 100 Seconds",
+    url: "https://www.youtube.com/watch?v=RvYYCGs45L4",
+    site: "youtube.com",
   },
 ];
 
 const FIXTURE_QUESTION =
-  "Are you stuck on setup and configuration, or on a runtime error once it runs?";
+  "Are you looking for foundational background, or for a specific method or result?";
 
 const VALIDATIONS: Record<
   ApproachValidation["assessment"],
@@ -70,8 +88,8 @@ const VALIDATIONS: Record<
     feedback:
       "That approach matches how this problem is usually solved. The links below can help you confirm the details.",
     hints: [
-      "Double-check edge cases like empty input.",
-      "Verify the library version matches the docs you follow.",
+      "Double-check edge cases and assumptions.",
+      "Cross-check claims against a primary source.",
     ],
   },
   "partly-correct": {
@@ -79,8 +97,8 @@ const VALIDATIONS: Record<
     feedback:
       "You are on the right track, but a few details may still trip you up. Use the hints and links to tighten the approach.",
     hints: [
-      "Consider what happens on network failure.",
-      "Make sure you are not mixing sync and async error handling.",
+      "Consider what evidence would confirm or refute your approach.",
+      "Make sure the source type matches the kind of answer you need.",
     ],
   },
   incorrect: {
@@ -88,8 +106,8 @@ const VALIDATIONS: Record<
     feedback:
       "This approach is unlikely to fix the issue as described. The links below point at more suitable patterns.",
     hints: [
-      "Re-read the error message for the exact failure point.",
-      "Check whether you need a different API than the one you planned.",
+      "Re-read the problem for the exact failure point or question.",
+      "Check whether a different kind of source would help more.",
     ],
   },
 };
@@ -102,12 +120,14 @@ async function delay(ms = MOCK_DELAY_MS): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function filterByArchives(
+function filterByResourceTypes(
   results: SearchResult[],
-  archiveIds: string[],
+  resourceTypeIds: string[],
 ): SearchResult[] {
-  if (archiveIds.length === 0) return results;
-  return results.filter((result) => urlMatchesArchives(result.url, archiveIds));
+  if (resourceTypeIds.length === 0) return results;
+  return results.filter((result) =>
+    urlMatchesResourceTypes(result.url, resourceTypeIds),
+  );
 }
 
 function scenarioFromText(text: string): string {
@@ -139,7 +159,7 @@ export type MockSearchInput = {
   question?: string;
   answer?: string;
   approach?: string;
-  archiveIds: string[];
+  resourceTypeIds: string[];
 };
 
 export type MockSearchResponse = {
@@ -188,7 +208,10 @@ export async function mockSearchResponse(
 
   if (input.action === "validate") {
     const validation = pickValidation(input.approach ?? "");
-    const results = filterByArchives(FIXTURE_REFINED_RESULTS, input.archiveIds);
+    const results = filterByResourceTypes(
+      FIXTURE_REFINED_RESULTS,
+      input.resourceTypeIds,
+    );
     return { body: { results, validation } };
   }
 
@@ -198,15 +221,15 @@ export async function mockSearchResponse(
 
   const source =
     input.action === "refine" ? FIXTURE_REFINED_RESULTS : FIXTURE_RESULTS;
-  const results = filterByArchives(source, input.archiveIds);
+  const results = filterByResourceTypes(source, input.resourceTypeIds);
 
   if (results.length === 0) {
     return {
       body: {
         results: [],
         error:
-          input.archiveIds.length > 0
-            ? "No mock links matched the selected archives. Try different archives or clear them."
+          input.resourceTypeIds.length > 0
+            ? "No mock links matched the selected resource types. Try different types or clear them."
             : undefined,
       },
     };

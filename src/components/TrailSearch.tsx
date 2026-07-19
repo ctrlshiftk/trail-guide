@@ -3,7 +3,10 @@
 import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useHelpfulLinks } from "@/hooks/useHelpfulLinks";
-import { ARCHIVES, formatArchiveLabels } from "@/lib/archives";
+import {
+  RESOURCE_TYPES,
+  formatResourceTypeLabels,
+} from "@/lib/resource-types";
 import type { ApproachValidation } from "@/lib/refine";
 import type { SearchResult } from "@/lib/search";
 import { SearchResults } from "./SearchResults";
@@ -96,8 +99,12 @@ export function TrailSearch() {
   const [isRefined, setIsRefined] = useState(false);
   const [validation, setValidation] = useState<ApproachValidation | null>(null);
   const [validationExiting, setValidationExiting] = useState(false);
-  const [selectedArchiveIds, setSelectedArchiveIds] = useState<string[]>([]);
-  const [submittedArchiveIds, setSubmittedArchiveIds] = useState<string[]>([]);
+  const [selectedResourceTypeIds, setSelectedResourceTypeIds] = useState<
+    string[]
+  >([]);
+  const [submittedResourceTypeIds, setSubmittedResourceTypeIds] = useState<
+    string[]
+  >([]);
   const [portalReady, setPortalReady] = useState(false);
   const [approachMounted, setApproachMounted] = useState(false);
   const [approachVisible, setApproachVisible] = useState(false);
@@ -112,19 +119,21 @@ export function TrailSearch() {
     if (helpfulLinks.length === 0) setShowHelpful(false);
   }, [helpfulLinks.length]);
 
-  function toggleArchive(archiveId: string) {
-    setSelectedArchiveIds((current) =>
-      current.includes(archiveId)
-        ? current.filter((id) => id !== archiveId)
-        : [...current, archiveId],
+  function toggleResourceType(resourceTypeId: string) {
+    setSelectedResourceTypeIds((current) =>
+      current.includes(resourceTypeId)
+        ? current.filter((id) => id !== resourceTypeId)
+        : [...current, resourceTypeId],
     );
   }
 
-  function withArchives<T extends Record<string, unknown>>(
+  function withResourceTypes<T extends Record<string, unknown>>(
     payload: T,
-    archiveIds = submittedArchiveIds,
+    resourceTypeIds = submittedResourceTypeIds,
   ) {
-    return archiveIds.length > 0 ? { ...payload, archives: archiveIds } : payload;
+    return resourceTypeIds.length > 0
+      ? { ...payload, resourceTypes: resourceTypeIds }
+      : payload;
   }
 
   function resetUnsureFollowUp() {
@@ -195,7 +204,7 @@ export function TrailSearch() {
 
     setSubmittedQuery(trimmed);
     setQuery(trimmed);
-    setSubmittedArchiveIds([...selectedArchiveIds]);
+    setSubmittedResourceTypeIds([...selectedResourceTypeIds]);
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
@@ -212,7 +221,7 @@ export function TrailSearch() {
       const response = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(withArchives({ query: trimmed }, selectedArchiveIds)),
+        body: JSON.stringify(withResourceTypes({ query: trimmed }, selectedResourceTypeIds)),
       });
 
       const data: { results: SearchResult[]; error?: string } =
@@ -253,7 +262,7 @@ export function TrailSearch() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          withArchives({
+          withResourceTypes({
             action: "question",
             query: submittedQuery,
             previousResults: results,
@@ -307,7 +316,7 @@ export function TrailSearch() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          withArchives({
+          withResourceTypes({
             action: "refine",
             query: submittedQuery,
             question: followUpQuestion,
@@ -361,7 +370,7 @@ export function TrailSearch() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          withArchives({
+          withResourceTypes({
             action: "validate",
             query: submittedQuery,
             approach,
@@ -514,9 +523,9 @@ export function TrailSearch() {
     };
   }, [overlayPresent, overlayPhase, followUpPhase, followUpMode, isLoading]);
 
-  const archiveFilterLabel =
-    submittedArchiveIds.length > 0
-      ? formatArchiveLabels(submittedArchiveIds)
+  const resourceTypeFilterLabel =
+    submittedResourceTypeIds.length > 0
+      ? formatResourceTypeLabels(submittedResourceTypeIds)
       : null;
 
   const resultsHeading = validation
@@ -535,8 +544,8 @@ export function TrailSearch() {
           Build your own answers
         </h1>
         <p className="mx-auto max-w-xl text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-          Describe your problem in detail and get links to relevant docs and
-          references. No answers, just pointers.
+          Describe what you are stuck on and get links to relevant sources.
+          No answers, just pointers.
         </p>
       </header>
 
@@ -550,30 +559,31 @@ export function TrailSearch() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Describe your problem, error, or question..."
+            placeholder="Describe your problem, question, or what you are trying to learn..."
             disabled={isLoading}
             rows={6}
             className="min-h-40 w-full resize-y rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-base leading-relaxed shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          {ARCHIVES.map((archive) => {
-            const isSelected = selectedArchiveIds.includes(archive.id);
+          {RESOURCE_TYPES.map((type) => {
+            const isSelected = selectedResourceTypeIds.includes(type.id);
 
             return (
               <button
-                key={archive.id}
+                key={type.id}
                 type="button"
                 aria-pressed={isSelected}
+                title={type.intent}
                 disabled={isLoading}
-                onClick={() => toggleArchive(archive.id)}
+                onClick={() => toggleResourceType(type.id)}
                 className={`rounded-full border px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
                   isSelected
                     ? "border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-300"
                     : "border-zinc-200 bg-white text-zinc-600 hover:border-emerald-300 hover:text-emerald-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-400 dark:hover:border-emerald-700 dark:hover:text-emerald-400"
                 }`}
               >
-                {archive.label}
+                {type.label}
               </button>
             );
           })}
@@ -737,12 +747,12 @@ export function TrailSearch() {
                     {!validation && (
                       <span className="font-normal text-zinc-500 dark:text-zinc-400">
                         &ldquo;{summarizeQuery(submittedQuery)}&rdquo;
-                        {archiveFilterLabel && (
+                        {resourceTypeFilterLabel && (
                           <>
                             {" "}
                             in{" "}
                             <span className="text-zinc-600 dark:text-zinc-300">
-                              {archiveFilterLabel}
+                              {resourceTypeFilterLabel}
                             </span>
                           </>
                         )}

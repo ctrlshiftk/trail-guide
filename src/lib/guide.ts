@@ -8,7 +8,7 @@ Identify:
 - what is blocking them (errors, confusion, missing knowledge)
 - the technologies, libraries, and platforms involved
 
-Then write 2-4 focused web search queries that would find docs, references, or tutorials for THIS specific situation — not generic keyword dumps.
+Then write 2-4 focused web search queries that would find useful sources for THIS specific situation — papers, books, documentation, tutorials, data, or other references as appropriate — not generic keyword dumps.
 
 Do not solve the problem. Do not write an answer. Only analyze and plan searches.`;
 }
@@ -16,11 +16,11 @@ Do not solve the problem. Do not write an answer. Only analyze and plan searches
 export function buildSearchSystemPrompt(): string {
   return `You are a web search assistant. Use Google Search to find highly relevant online resources.
 
-You receive a problem analysis and the user's full description (which may include code).
+You receive a problem analysis and the user's full description (which may include notes, data, or code).
 
 Rules:
 - Understand the situation first, then search for resources that match the actual need.
-- Prefer official docs, authoritative references, and pages that address the specific error or task.
+- Prefer authoritative sources that address the specific question, gap, or task — across domains, not only programming.
 - Find 3-5 links. Do not answer the question or write summaries.
 - Keep your text response empty.`;
 }
@@ -180,5 +180,5 @@ ${hintBlock}
 Links already shown:
 ${links}
 
-Search for resources that help the user verify, deepen, or correct their thinking — docs and references aligned with their approach and any gaps identified. Prefer more specific links than those already shown.`;
+Search for resources that help the user verify, deepen, or correct their thinking — sources aligned with their approach and any gaps identified. Prefer more specific links than those already shown.`;
 }

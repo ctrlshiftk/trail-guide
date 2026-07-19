@@ -4,12 +4,12 @@ import {
   refineSearch,
   validateApproach,
 } from "@/lib/refine";
-import { normalizeArchiveIds } from "@/lib/archives";
+import { normalizeResourceTypeIds } from "@/lib/resource-types";
 import type { SearchResult } from "@/lib/search";
 import { searchWeb } from "@/lib/search";
 
 type SearchRequestBase = {
-  archives?: string[];
+  resourceTypes?: string[];
 };
 
 type SearchRequest =
@@ -35,8 +35,8 @@ type SearchRequest =
 
 export async function POST(req: Request) {
   const body: SearchRequest = await req.json();
-  const archiveIds = normalizeArchiveIds(body.archives);
-  const searchOptions = { archiveIds };
+  const resourceTypeIds = normalizeResourceTypeIds(body.resourceTypes);
+  const searchOptions = { resourceTypeIds };
 
   if (isAiMockEnabled()) {
     if (body.action === "question") {
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       const mock = await mockSearchResponse({
         action: "question",
         query,
-        archiveIds,
+        resourceTypeIds,
       });
       return Response.json(mock.body, { status: mock.status ?? 200 });
     }
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
         query,
         question,
         answer,
-        archiveIds,
+        resourceTypeIds,
       });
       return Response.json(mock.body, { status: mock.status ?? 200 });
     }
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
         action: "validate",
         query,
         approach,
-        archiveIds,
+        resourceTypeIds,
       });
       return Response.json(mock.body, { status: mock.status ?? 200 });
     }
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     const mock = await mockSearchResponse({
       action: "search",
       query: body.query ?? "",
-      archiveIds,
+      resourceTypeIds,
     });
     return Response.json(mock.body, { status: mock.status ?? 200 });
   }

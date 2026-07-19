@@ -2,10 +2,10 @@ import { google, type GoogleProviderMetadata } from "@ai-sdk/google";
 import { generateObject, generateText } from "ai";
 import { z } from "zod";
 import {
-  buildArchiveSearchConstraint,
-  normalizeArchiveIds,
-  urlMatchesArchives,
-} from "./archives";
+  buildResourceTypeSearchConstraint,
+  normalizeResourceTypeIds,
+  urlMatchesResourceTypes,
+} from "./resource-types";
 import {
   buildProblemAnalysisPrompt,
   buildSearchPrompt,
@@ -13,7 +13,7 @@ import {
 } from "./guide";
 
 export type SearchOptions = {
-  archiveIds?: string[];
+  resourceTypeIds?: string[];
 };
 
 export type SearchResult = {
@@ -244,13 +244,14 @@ async function collectGroundedResults(
   prompt: string,
   modelId: (typeof GEMINI_MODELS)[number],
   limit: number,
-  archiveIds: string[] = [],
+  resourceTypeIds: string[] = [],
 ): Promise<SearchResult[]> {
   try {
+    const typeConstraint = buildResourceTypeSearchConstraint(resourceTypeIds);
     const result = await generateText({
       model: google(modelId),
-      system: buildSearchSystemPrompt() + buildArchiveSearchConstraint(archiveIds),
-      prompt: prompt + buildArchiveSearchConstraint(archiveIds),
+      system: buildSearchSystemPrompt() + typeConstraint,
+      prompt: prompt + typeConstraint,
       tools: {
         google_search: google.tools.googleSearch({}),
       },
@@ -268,12 +269,12 @@ async function collectGroundedResults(
       return [];
     }
 
-    const fetchLimit = archiveIds.length > 0 ? limit * 4 : limit;
+    const fetchLimit = resourceTypeIds.length > 0 ? limit * 4 : limit;
     const enriched = await Promise.all(
       combined.slice(0, fetchLimit).map((item) => enrichResult(item)),
     );
     const filtered = dedupeResults(enriched).filter((item) =>
-      urlMatchesArchives(item.url, archiveIds),
+      urlMatchesResourceTypes(item.url, resourceTypeIds),
     );
 
     return toSearchResults(filtered.slice(0, limit));
@@ -285,7 +286,7 @@ async function collectGroundedResults(
 async function searchWithGemini(
   query: string,
   limit: number,
-  archiveIds: string[] = [],
+  resourceTypeIds: string[] = [],
 ): Promise<SearchWebResult> {
   let sawQuotaError = false;
 
@@ -300,7 +301,7 @@ async function searchWithGemini(
         searchPrompt,
         modelId,
         limit,
-        archiveIds,
+        resourceTypeIds,
       );
 
       if (results.length > 0) {
@@ -312,7 +313,7 @@ async function searchWithGemini(
           query,
           modelId,
           limit,
-          archiveIds,
+          resourceTypeIds,
         );
         if (fallbackResults.length > 0) {
           return { results: fallbackResults };
@@ -334,10 +335,11 @@ async function searchWithGemini(
     };
   }
 
-  if (archiveIds.length > 0) {
+  if (resourceTypeIds.length > 0) {
     return {
       results: [],
-      error: "No results found in the selected archives. Try another archive or search the full web.",
+      error:
+        "No results found for the selected resource types. Try another type or search the full web.",
     };
   }
 
@@ -359,7 +361,7 @@ export async function searchWebWithPrompt(
     };
   }
 
-  const archiveIds = normalizeArchiveIds(options?.archiveIds);
+  const resourceTypeIds = normalizeResourceTypeIds(options?.resourceTypeIds);
   let sawQuotaError = false;
 
   for (const modelId of GEMINI_MODELS) {
@@ -368,7 +370,7 @@ export async function searchWebWithPrompt(
         trimmed,
         modelId,
         limit,
-        archiveIds,
+        resourceTypeIds,
       );
       if (results.length > 0) {
         return { results };
@@ -389,10 +391,11 @@ export async function searchWebWithPrompt(
     };
   }
 
-  if (archiveIds.length > 0) {
+  if (resourceTypeIds.length > 0) {
     return {
       results: [],
-      error: "No results found in the selected archives. Try another archive or search the full web.",
+      error:
+        "No results found for the selected resource types. Try another type or search the full web.",
     };
   }
 
@@ -414,6 +417,6 @@ export async function searchWeb(
     };
   }
 
-  const archiveIds = normalizeArchiveIds(options?.archiveIds);
-  return searchWithGemini(trimmed, limit, archiveIds);
+  const resourceTypeIds = normalizeResourceTypeIds(options?.resourceTypeIds);
+  return searchWithGemini(trimmed, limit, resourceTypeIds);
 }
