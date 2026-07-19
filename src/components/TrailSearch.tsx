@@ -594,33 +594,33 @@ export function TrailSearch() {
       </form>
 
       {helpfulLinks.length > 0 && (
-        <section className="space-y-3" aria-labelledby="helpful-heading">
-          {!showHelpful ? (
-            <button
-              type="button"
-              id="helpful-heading"
-              aria-expanded={false}
-              onClick={() => setShowHelpful(true)}
-              className="group flex w-full items-start gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
-            >
-              <span
-                aria-hidden
-                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-zinc-400 transition group-hover:text-emerald-600 dark:text-zinc-500 dark:group-hover:text-emerald-400"
+        <section aria-labelledby="helpful-heading">
+          <SmoothHeight>
+            {!showHelpful ? (
+              <button
+                type="button"
+                id="helpful-heading"
+                aria-expanded={false}
+                onClick={() => setShowHelpful(true)}
+                className="group flex w-full items-start gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30"
               >
-                +
-              </span>
-              <span className="min-w-0">
-                <span className="block font-medium text-zinc-700 group-hover:text-emerald-800 dark:text-zinc-300 dark:group-hover:text-emerald-300">
-                  Show {helpfulLinks.length} saved{" "}
-                  {helpfulLinks.length === 1 ? "link" : "links"}
+                <span
+                  aria-hidden
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-zinc-400 transition group-hover:text-emerald-600 dark:text-zinc-500 dark:group-hover:text-emerald-400"
+                >
+                  +
                 </span>
-                <span className="mt-0.5 block text-sm text-zinc-500 dark:text-zinc-400">
-                  Marked as helpful on this device
+                <span className="min-w-0">
+                  <span className="block font-medium text-zinc-700 group-hover:text-emerald-800 dark:text-zinc-300 dark:group-hover:text-emerald-300">
+                    Show {helpfulLinks.length} saved{" "}
+                    {helpfulLinks.length === 1 ? "link" : "links"}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-zinc-500 dark:text-zinc-400">
+                    Marked as helpful on this device
+                  </span>
                 </span>
-              </span>
-            </button>
-          ) : (
-            <SmoothHeight>
+              </button>
+            ) : (
               <div className="space-y-3">
                 <div className="flex items-end justify-between gap-3">
                   <div className="space-y-1">
@@ -687,8 +687,8 @@ export function TrailSearch() {
                   ))}
                 </ul>
               </div>
-            </SmoothHeight>
-          )}
+            )}
+          </SmoothHeight>
         </section>
       )}
 
