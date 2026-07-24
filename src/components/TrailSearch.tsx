@@ -1,6 +1,14 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
+import {
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { useHelpfulLinks } from "@/hooks/useHelpfulLinks";
 import {
@@ -64,6 +72,18 @@ function assessmentStyles(
   }
 }
 
+type ResultTrail = {
+  results: SearchResult[];
+  /** How many entries at the front of `results` belong to the latest batch. */
+  latestCount: number;
+};
+
+const EMPTY_RESULT_TRAIL: ResultTrail = { results: [], latestCount: 0 };
+
+type ResultTrailAction =
+  | { type: "replace"; results: SearchResult[] }
+  | { type: "prepend"; incoming: SearchResult[] };
+
 /** Newest batch first; drop older entries that share a URL with the new batch. */
 function mergeIncomingResults(
   existing: SearchResult[],
@@ -78,11 +98,34 @@ function mergeIncomingResults(
   return [...stamped, ...older];
 }
 
+function resultTrailReducer(
+  state: ResultTrail,
+  action: ResultTrailAction,
+): ResultTrail {
+  switch (action.type) {
+    case "replace":
+      return {
+        results: action.results,
+        latestCount: action.results.length,
+      };
+    case "prepend": {
+      if (action.incoming.length === 0) return state;
+      return {
+        results: mergeIncomingResults(state.results, action.incoming),
+        latestCount: action.incoming.length,
+      };
+    }
+  }
+}
+
 export function TrailSearch() {
+  const queryInputRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [latestCount, setLatestCount] = useState(0);
+  const [{ results, latestCount }, dispatchResultTrail] = useReducer(
+    resultTrailReducer,
+    EMPTY_RESULT_TRAIL,
+  );
   const [hasSearched, setHasSearched] = useState(false);
   const [overlayPhase, setOverlayPhase] = useState<
     "closed" | "opening" | "open" | "closing"
@@ -168,15 +211,12 @@ export function TrailSearch() {
   }
 
   function applyFreshResults(next: SearchResult[]) {
-    setResults(next);
-    setLatestCount(next.length);
+    dispatchResultTrail({ type: "replace", results: next });
   }
 
+  /** Prepend a new batch; primary list shows only that batch via latestCount. */
   function applyAccumulatedResults(incoming: SearchResult[]) {
-    if (incoming.length === 0) return;
-
-    setResults((current) => mergeIncomingResults(current, incoming));
-    setLatestCount(incoming.length);
+    dispatchResultTrail({ type: "prepend", incoming });
   }
 
   function clearSession() {
@@ -441,6 +481,14 @@ export function TrailSearch() {
   const overlayPresent = overlayPhase !== "closed";
   const overlayOpen = overlayPhase === "open";
 
+  useLayoutEffect(() => {
+    const textarea = queryInputRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [query]);
+
   useEffect(() => {
     if (overlayPhase === "closed") {
       setApproachMounted(false);
@@ -555,6 +603,7 @@ export function TrailSearch() {
             Describe your problem
           </label>
           <textarea
+            ref={queryInputRef}
             id="trail-search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -562,7 +611,7 @@ export function TrailSearch() {
             placeholder="Describe your problem, question, or what you are trying to learn..."
             disabled={isLoading}
             rows={6}
-            className="min-h-40 w-full resize-y rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-base leading-relaxed shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
+            className="min-h-40 max-h-[min(24rem,50vh)] w-full resize-none overflow-y-auto rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-base leading-relaxed shadow-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-950"
           />
         </div>
         <div className="flex flex-wrap gap-2">
